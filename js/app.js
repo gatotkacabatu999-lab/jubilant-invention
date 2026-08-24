@@ -3,11 +3,11 @@
    Data model, persisted in localStorage, no backend needed.
    ========================================================= */
 import '../css/style.css';
-import 'lightgallery.js/dist/css/lightgallery.css';
+import '../css/lightgallery.css';
 import 'lightgallery.js/dist/js/lightgallery.js';
 import { marked } from 'marked';
 import { DEFAULT_BOOK_TITLE, normalizeBookTitle, normalizeDocumentState } from '../src/data-store.js';
-import { parseMarkdownImages, serializeMarkdownImage } from '../src/media-markdown.js';
+import { markdownImagesToGalleryMarkup, parseMarkdownImages, serializeMarkdownImage } from '../src/media-markdown.js';
 
 const STORAGE_KEY = 'docbook_data_v1';
 const THEME_KEY = 'docbook_theme';
@@ -587,7 +587,42 @@ function renderMarkdown(text) {
     return `${prefix}<div class="callout callout-${variant}"><div class="callout-header"><span class="callout-icon">${iconMap[variant] || 'ℹ️'}</span><span>${labelMap[variant] || 'Info'}</span></div><div class="callout-body">${html}</div></div>`;
   });
 
-  return marked.parse(normalized);
+  const galleryNormalized = (() => {
+    const source = String(normalized || '');
+    const images = parseMarkdownImages(source);
+    if (!images.length) return source;
+
+    let output = '';
+    let cursor = 0;
+    let index = 0;
+
+    while (index < images.length) {
+      const current = images[index];
+      const group = [current];
+      let groupEnd = current.end;
+      let nextIndex = index + 1;
+
+      while (nextIndex < images.length) {
+        const next = images[nextIndex];
+        const gap = source.slice(groupEnd, next.start);
+        if (gap.trim() !== '') break;
+        group.push(next);
+        groupEnd = next.end;
+        nextIndex += 1;
+      }
+
+      const groupStart = current.start;
+      output += source.slice(cursor, groupStart);
+      output += markdownImagesToGalleryMarkup(source.slice(groupStart, groupEnd));
+      cursor = groupEnd;
+      index = nextIndex;
+    }
+
+    output += source.slice(cursor);
+    return output;
+  })();
+
+  return marked.parse(galleryNormalized);
 }
 
 function enhanceDocumentPage(pageBody) {
