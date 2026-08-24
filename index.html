@@ -36,17 +36,23 @@
   <div class="layout">
     <!-- Sidebar -->
     <aside id="sidebar" class="sidebar">
-      <div class="sidebar-search">
-        <div class="search-box">
-          <svg viewBox="0 0 24 24"><path d="M11 4a7 7 0 105.29 12.02l4.35 4.34 1.41-1.41-4.34-4.35A7 7 0 0011 4zm0 2a5 5 0 110 10 5 5 0 010-10z"/></svg>
-          <input type="text" id="searchInput" placeholder="Cari dokumen…">
+      <div class="sidebar-header">
+        <div class="sidebar-search">
+          <div class="search-box">
+            <svg viewBox="0 0 24 24"><path d="M11 4a7 7 0 105.29 12.02l4.35 4.34 1.41-1.41-4.34-4.35A7 7 0 0011 4zm0 2a5 5 0 110 10 5 5 0 010-10z"/></svg>
+            <input type="text" id="searchInput" placeholder="Cari dokumen…">
+          </div>
         </div>
       </div>
-      <nav id="menuTree" class="menu-tree"></nav>
-      <button id="addRootPage" class="add-root-btn edit-only">
-        <svg viewBox="0 0 24 24"><path d="M12 4v16m-8-8h16"/></svg>
-        Tambah Menu
-      </button>
+
+      <div class="sidebar-content">
+        <nav id="menuTree" class="menu-tree"></nav>
+        <button id="addRootPage" class="add-root-btn edit-only">
+          <svg viewBox="0 0 24 24"><path d="M12 4v16m-8-8h16"/></svg>
+          Tambah Menu
+        </button>
+      </div>
+
       <div class="sidebar-footer edit-only">
         <button id="btnExport" class="footer-link-btn" title="Muat turun sandaran JSON">⬇ JSON</button>
         <button id="btnExportMarkdown" class="footer-link-btn" title="Muat turun halaman aktif sebagai Markdown">⬇ .md</button>
