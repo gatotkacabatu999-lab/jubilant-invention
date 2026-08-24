@@ -17,6 +17,14 @@ const LANG_KEY = 'docbook_language';
 const translations = {
   ms: {
     settings: 'Tetapan',
+    general: 'Umum',
+    appearance: 'Penampilan',
+    generalDescription: 'Urus identiti dan bahasa RecipeBook anda.',
+    appearanceDescription: 'Sesuaikan rupa dan cara anda menggunakan RecipeBook.',
+    languageDescription: 'Pilih bahasa yang digunakan dalam antara muka.',
+    bookTitleDescription: 'Nama ini dipaparkan pada penjuru kiri atas.',
+    editModeDescription: 'Tunjukkan kawalan untuk menyunting kandungan dan menu.',
+    themeDescription: 'Pilih tema yang selesa untuk digunakan.',
     language: 'Bahasa',
     bookTitle: 'Nama RecipeBook',
     theme: 'Tema',
@@ -70,6 +78,14 @@ const translations = {
   },
   en: {
     settings: 'Settings',
+    general: 'General',
+    appearance: 'Appearance',
+    generalDescription: 'Manage your RecipeBook identity and language.',
+    appearanceDescription: 'Customize how your RecipeBook looks and feels.',
+    languageDescription: 'Choose the language used across the interface.',
+    bookTitleDescription: 'This name appears in the top-left corner.',
+    editModeDescription: 'Show controls for editing content and navigation.',
+    themeDescription: 'Choose a theme that feels comfortable to use.',
     language: 'Language',
     bookTitle: 'RecipeBook name',
     theme: 'Theme',
@@ -928,43 +944,80 @@ function openSettingsPanel() {
   const backdrop = document.createElement('div');
   backdrop.className = 'settings-backdrop';
   backdrop.innerHTML = `
-    <div class="settings-panel" role="dialog" aria-modal="true" aria-label="${getText('settings')}">
-      <div class="settings-header">
-        <h3>${getText('settings')}</h3>
-        <button class="icon-btn" id="closeSettingsBtn" aria-label="${getText('close')}">×</button>
-      </div>
-
-      <div class="settings-section">
-        <label>${getText('language')}</label>
-        <div class="segmented">
-          <label><input type="radio" name="langChoice" value="ms" ${getLanguage() === 'ms' ? 'checked' : ''}><span>BM</span></label>
-          <label><input type="radio" name="langChoice" value="en" ${getLanguage() === 'en' ? 'checked' : ''}><span>EN</span></label>
+    <div class="settings-panel" role="dialog" aria-modal="true" aria-labelledby="settingsDialogTitle">
+      <aside class="settings-sidebar">
+        <div class="settings-sidebar-heading">
+          <span class="settings-sidebar-mark">⚙</span>
+          <span>${getText('settings')}</span>
         </div>
-      </div>
+        <nav class="settings-nav" aria-label="${getText('settings')}">
+          <button type="button" class="settings-nav-item is-active" data-settings-tab="general" aria-selected="true" aria-controls="settings-general">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5.5A2.5 2.5 0 016.5 3h11A2.5 2.5 0 0120 5.5v13a2.5 2.5 0 01-2.5 2.5h-11A2.5 2.5 0 014 18.5v-13zM7 7h10M7 11h10M7 15h6"/></svg>
+            <span>${getText('general')}</span>
+          </button>
+          <button type="button" class="settings-nav-item" data-settings-tab="appearance" aria-selected="false" aria-controls="settings-appearance">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a9 9 0 100 18h1.2a2.3 2.3 0 000-4.6h-.9a2.3 2.3 0 01-2.3-2.3c0-1.27 1.03-2.3 2.3-2.3H15a6 6 0 006-6A9 9 0 0012 3zM7.5 10.2a1.3 1.3 0 110-2.6 1.3 1.3 0 010 2.6zm4.5-3a1.3 1.3 0 110-2.6 1.3 1.3 0 010 2.6zm4.3 3a1.3 1.3 0 110-2.6 1.3 1.3 0 010 2.6z"/></svg>
+            <span>${getText('appearance')}</span>
+          </button>
+        </nav>
+      </aside>
 
-      <div class="settings-section">
-        <label for="recipeBookNameInput">${getText('bookTitle')}</label>
-        <input id="recipeBookNameInput" type="text" value="${escapeAttribute(state.bookTitle || DEFAULT_BOOK_TITLE)}" maxlength="40" placeholder="RecipeBook">
-      </div>
-
-      <div class="settings-section">
-        <label>${getText('editMode')}</label>
-        <label class="switch">
-          <input type="checkbox" id="settingsEditToggle" ${document.body.classList.contains('edit-mode') ? 'checked' : ''}>
-          <span class="slider"></span>
-        </label>
-      </div>
-
-      <div class="settings-section">
-        <label>${getText('theme')}</label>
-        <div class="segmented">
-          <label><input type="radio" name="themeChoice" value="light" ${document.documentElement.classList.contains('dark') ? '' : 'checked'}><span>${getText('light')}</span></label>
-          <label><input type="radio" name="themeChoice" value="dark" ${document.documentElement.classList.contains('dark') ? 'checked' : ''}><span>${getText('dark')}</span></label>
+      <div class="settings-main">
+        <div class="settings-header">
+          <div>
+            <p class="settings-eyebrow">${getText('settings')}</p>
+            <h3 id="settingsDialogTitle">${getText('general')}</h3>
+            <p class="settings-description" data-settings-description>${getText('generalDescription')}</p>
+          </div>
+          <button class="icon-btn settings-close-btn" id="closeSettingsBtn" aria-label="${getText('close')}">×</button>
         </div>
-      </div>
 
-      <div class="settings-actions">
-        <button class="btn btn-primary" id="confirmSettingsBtn">${getText('close')}</button>
+        <div class="settings-scroll">
+          <section class="settings-pane is-active" id="settings-general" data-settings-pane="general" role="tabpanel">
+            <div class="settings-section">
+              <div class="settings-field-copy">
+                <label>${getText('language')}</label>
+                <p>${getText('languageDescription')}</p>
+              </div>
+              <div class="segmented">
+                <label><input type="radio" name="langChoice" value="ms" ${getLanguage() === 'ms' ? 'checked' : ''}><span>BM</span></label>
+                <label><input type="radio" name="langChoice" value="en" ${getLanguage() === 'en' ? 'checked' : ''}><span>EN</span></label>
+              </div>
+            </div>
+
+            <div class="settings-section">
+              <div class="settings-field-copy">
+                <label for="recipeBookNameInput">${getText('bookTitle')}</label>
+                <p>${getText('bookTitleDescription')}</p>
+              </div>
+              <input id="recipeBookNameInput" type="text" value="${escapeAttribute(state.bookTitle || DEFAULT_BOOK_TITLE)}" maxlength="40" placeholder="RecipeBook">
+            </div>
+          </section>
+
+          <section class="settings-pane" id="settings-appearance" data-settings-pane="appearance" role="tabpanel" hidden>
+            <div class="settings-section">
+              <div class="settings-field-copy">
+                <label>${getText('theme')}</label>
+                <p>${getText('themeDescription')}</p>
+              </div>
+              <div class="segmented">
+                <label><input type="radio" name="themeChoice" value="light" ${document.documentElement.classList.contains('dark') ? '' : 'checked'}><span>${getText('light')}</span></label>
+                <label><input type="radio" name="themeChoice" value="dark" ${document.documentElement.classList.contains('dark') ? 'checked' : ''}><span>${getText('dark')}</span></label>
+              </div>
+            </div>
+
+            <div class="settings-section">
+              <div class="settings-field-copy">
+                <label>${getText('editMode')}</label>
+                <p>${getText('editModeDescription')}</p>
+              </div>
+              <label class="switch">
+                <input type="checkbox" id="settingsEditToggle" ${document.body.classList.contains('edit-mode') ? 'checked' : ''}>
+                <span class="slider"></span>
+              </label>
+            </div>
+          </section>
+        </div>
       </div>
     </div>
   `;
@@ -977,7 +1030,30 @@ function openSettingsPanel() {
   });
 
   document.getElementById('closeSettingsBtn').addEventListener('click', close);
-  document.getElementById('confirmSettingsBtn').addEventListener('click', close);
+
+  const settingsTabDescriptionKeys = {
+    general: 'generalDescription',
+    appearance: 'appearanceDescription'
+  };
+  backdrop.querySelectorAll('[data-settings-tab]').forEach((tab) => {
+    tab.addEventListener('click', () => {
+      const section = tab.dataset.settingsTab;
+      backdrop.querySelectorAll('[data-settings-tab]').forEach((item) => {
+        const isActive = item === tab;
+        item.classList.toggle('is-active', isActive);
+        item.setAttribute('aria-selected', isActive ? 'true' : 'false');
+      });
+      backdrop.querySelectorAll('[data-settings-pane]').forEach((pane) => {
+        const isActive = pane.dataset.settingsPane === section;
+        pane.classList.toggle('is-active', isActive);
+        pane.hidden = !isActive;
+      });
+      const title = backdrop.querySelector('#settingsDialogTitle');
+      const description = backdrop.querySelector('[data-settings-description]');
+      if (title) title.textContent = getText(section);
+      if (description) description.textContent = getText(settingsTabDescriptionKeys[section]);
+    });
+  });
 
   backdrop.querySelectorAll('[name="langChoice"]').forEach((radio) => {
     radio.addEventListener('change', () => {
