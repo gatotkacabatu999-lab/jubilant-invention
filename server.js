@@ -91,4 +91,6 @@ async function start() {
   });
 }
 
-start();
+if (process.argv[1] && path.resolve(process.argv[1]) === __filename) {
+  start();
+}
