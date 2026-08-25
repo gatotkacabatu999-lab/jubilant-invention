@@ -14,7 +14,7 @@
   <header class="topbar">
     <div class="topbar-left">
       <button id="sidebarToggle" class="icon-btn" title="Toggle sidebar">
-        <svg viewBox="0 0 24 24"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6.75h18M3 12h18M3 17.25h18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
       </button>
       <div class="brand">
         <span class="brand-logo">📘</span>
@@ -60,6 +60,8 @@
         <input type="file" id="importFile" accept="application/json" hidden>
       </div>
     </aside>
+
+    <div id="sidebarResizer" class="sidebar-resizer" aria-label="Resize sidebar" title="Drag to resize sidebar"></div>
 
     <div id="sidebarOverlay" class="sidebar-overlay" aria-label="Tutup sidebar"></div>
 

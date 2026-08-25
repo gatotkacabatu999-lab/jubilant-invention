@@ -64,3 +64,13 @@ export function normalizeDocumentState(raw = {}) {
     bookTitle
   };
 }
+
+export function hasUnsavedChanges(currentValue, originalValue) {
+  if (originalValue == null) {
+    return currentValue != null;
+  }
+
+  const nextValue = currentValue == null ? '' : String(currentValue);
+  const previousValue = String(originalValue);
+  return nextValue !== previousValue;
+}

@@ -7,12 +7,14 @@ import '../css/lightgallery.css';
 import 'lightgallery.js/dist/js/lightgallery.js';
 import { marked } from 'marked';
 import { DEFAULT_BOOK_TITLE, normalizeBookTitle, normalizeDocumentState } from '../src/data-store.js';
+import { clampSidebarWidth } from '../src/sidebar-resize.js';
 import { markdownImagesToGalleryMarkup, parseMarkdownImages, serializeMarkdownImage } from '../src/media-markdown.js';
 
 const STORAGE_KEY = 'docbook_data_v1';
 const THEME_KEY = 'docbook_theme';
 const EDIT_KEY = 'docbook_edit_mode';
 const SIDEBAR_KEY = 'docbook_sidebar_collapsed';
+const SIDEBAR_WIDTH_KEY = 'docbook_sidebar_width';
 const LANG_KEY = 'docbook_language';
 
 const translations = {
@@ -358,7 +360,57 @@ const menuTreeEl = document.getElementById('menuTree');
 const contentEl = document.getElementById('content');
 const tplTreeItem = document.getElementById('tpl-tree-item');
 const sidebarEl = document.getElementById('sidebar');
+const sidebarResizer = document.getElementById('sidebarResizer');
 const searchInput = document.getElementById('searchInput');
+
+function getSidebarWidth() {
+  const saved = Number(localStorage.getItem(SIDEBAR_WIDTH_KEY));
+  if (!Number.isFinite(saved)) return 280;
+  return clampSidebarWidth(saved);
+}
+
+function setSidebarWidth(width) {
+  const nextWidth = clampSidebarWidth(width);
+  if (!sidebarEl) return;
+  sidebarEl.style.width = `${nextWidth}px`;
+  sidebarEl.style.minWidth = `${nextWidth}px`;
+  localStorage.setItem(SIDEBAR_WIDTH_KEY, String(nextWidth));
+}
+
+function initSidebarResize() {
+  if (!sidebarEl || !sidebarResizer) return;
+
+  const initialWidth = getSidebarWidth();
+  setSidebarWidth(initialWidth);
+
+  let dragging = false;
+  let startX = 0;
+  let startWidth = 0;
+
+  const stopDragging = () => {
+    dragging = false;
+    document.body.classList.remove('sidebar-resizing');
+    document.removeEventListener('pointermove', onPointerMove);
+    document.removeEventListener('pointerup', stopDragging);
+  };
+
+  function onPointerMove(event) {
+    if (!dragging) return;
+    const delta = event.clientX - startX;
+    setSidebarWidth(startWidth + delta);
+  }
+
+  sidebarResizer.addEventListener('pointerdown', (event) => {
+    if (!document.body.classList.contains('edit-mode')) return;
+    event.preventDefault();
+    dragging = true;
+    startX = event.clientX;
+    startWidth = sidebarEl.offsetWidth || getSidebarWidth();
+    document.body.classList.add('sidebar-resizing');
+    document.addEventListener('pointermove', onPointerMove);
+    document.addEventListener('pointerup', stopDragging);
+  });
+}
 
 /* ---------- Rendering: sidebar tree ---------- */
 function renderTree() {
@@ -399,6 +451,7 @@ function renderTreeNode(node) {
   frag.querySelector('.act-add-child').setAttribute('title', getText('addSubmenu'));
   frag.querySelector('.act-add-child').addEventListener('click', (e) => {
     e.stopPropagation();
+    if (!document.body.classList.contains('edit-mode')) return;
     promptModal(getText('addSubmenu'), 'Nama submenu', '', (title) => {
       if (!title) return;
       const newNode = { id: uid(), title, content: `# ${title}\n\nTulis kandungan di sini…`, children: [] };
@@ -414,6 +467,7 @@ function renderTreeNode(node) {
   frag.querySelector('.act-rename').setAttribute('title', getText('rename'));
   frag.querySelector('.act-rename').addEventListener('click', (e) => {
     e.stopPropagation();
+    if (!document.body.classList.contains('edit-mode')) return;
     promptModal(getText('rename'), 'Nama baharu', node.title, (title) => {
       if (!title) return;
       node.title = title;
@@ -426,18 +480,21 @@ function renderTreeNode(node) {
   frag.querySelector('.act-up').setAttribute('title', getText('moveUp'));
   frag.querySelector('.act-up').addEventListener('click', (e) => {
     e.stopPropagation();
+    if (!document.body.classList.contains('edit-mode')) return;
     moveNode(node.id, 'up');
   });
 
   frag.querySelector('.act-down').setAttribute('title', getText('moveDown'));
   frag.querySelector('.act-down').addEventListener('click', (e) => {
     e.stopPropagation();
+    if (!document.body.classList.contains('edit-mode')) return;
     moveNode(node.id, 'down');
   });
 
   frag.querySelector('.act-duplicate').setAttribute('title', getText('duplicate'));
   frag.querySelector('.act-duplicate').addEventListener('click', (e) => {
     e.stopPropagation();
+    if (!document.body.classList.contains('edit-mode')) return;
     const siblings = findParentArray(node.id);
     const index = siblings.findIndex(item => item.id === node.id);
     const copy = duplicateNode(node);
@@ -451,6 +508,7 @@ function renderTreeNode(node) {
   frag.querySelector('.act-delete').setAttribute('title', getText('deleteNode'));
   frag.querySelector('.act-delete').addEventListener('click', (e) => {
     e.stopPropagation();
+    if (!document.body.classList.contains('edit-mode')) return;
     confirmModal(`${getText('deleteNode')} "${node.title}" dan semua submenunya?`, () => {
       const wasActive = (state.activeId === node.id) || !!findNode(state.activeId, node.children);
       removeNode(node.id);
@@ -492,6 +550,8 @@ function renderContent() {
     breadcrumbEl.innerHTML = path.map((crumb, index) => `<span class="crumb-link" data-crumb-id="${crumb.id}">${escapeHtml(crumb.title)}</span>${index < path.length - 1 ? '<span class="crumb-sep">/</span>' : ''}`).join('');
   }
 
+  const isEditModeEnabled = document.body.classList.contains('edit-mode');
+
   contentEl.innerHTML = `
     <div class="page-header">
       <h1 class="page-title" id="pageTitle">${escapeHtml(node.title)}</h1>
@@ -522,7 +582,13 @@ function renderContent() {
   enhanceDocumentPage(pageBody);
 
   const titleEl = document.getElementById('pageTitle');
-  document.getElementById('btnEditContent').addEventListener('click', () => renderEditor(node));
+  const editContentBtn = document.getElementById('btnEditContent');
+  if (editContentBtn) {
+    editContentBtn.addEventListener('click', () => {
+      if (!document.body.classList.contains('edit-mode')) return;
+      renderEditor(node);
+    });
+  }
 
   // Inline title editing while in edit mode
   titleEl.addEventListener('blur', () => {
@@ -988,7 +1054,7 @@ function openMediaEditDialog(textarea, media) {
       <div class="modal-actions media-edit-actions">
         <button type="button" class="btn btn-danger" id="deleteMediaButton">${getText('deleteImage')}</button>
         <div>
-          <button type="button" class="btn btn-ghost" id="mediaEditCancel">${getText('cancel')}</button>
+          <button type="button" class="btn btn-danger" id="mediaEditCancel">${getText('cancel')}</button>
           <button type="button" class="btn btn-primary" id="mediaEditSave">${getText('save')}</button>
         </div>
       </div>
@@ -1072,7 +1138,180 @@ function openMediaEditDialog(textarea, media) {
   captionInput.select();
 }
 
+function openMediaUploadModal(textarea) {
+  const backdrop = document.createElement('div');
+  backdrop.className = 'modal-backdrop media-upload-backdrop';
+  backdrop.innerHTML = `
+    <div class="modal media-upload-modal" role="dialog" aria-modal="true" aria-labelledby="mediaUploadTitle">
+      <div class="media-edit-heading">
+        <div>
+          <p class="media-edit-eyebrow">${getText('mediaManager')}</p>
+          <h3 id="mediaUploadTitle">${getText('mediaManager')}</h3>
+        </div>
+        <button type="button" class="icon-btn media-edit-close" aria-label="${getText('close')}">×</button>
+      </div>
+
+      <div class="media-modal-tabs" role="tablist" aria-label="Media tabs">
+        <button type="button" class="media-modal-tab is-active" data-media-tab="upload" role="tab" aria-selected="true">Upload</button>
+        <button type="button" class="media-modal-tab" data-media-tab="list" role="tab" aria-selected="false">Gambar</button>
+      </div>
+
+      <div class="media-modal-pane is-active" data-media-pane="upload" role="tabpanel">
+        <p class="media-manager-note">${getText('mediaManagerHint')}</p>
+
+        <label class="media-field-label" for="mediaUploadUrlInput">${getText('imageUrl')}</label>
+        <input id="mediaUploadUrlInput" type="url" placeholder="${escapeAttribute(getText('imageUrlPlaceholder'))}">
+
+        <label class="media-field-label" for="mediaUploadNameInput">${getText('imageName')}</label>
+        <input id="mediaUploadNameInput" type="text" placeholder="${escapeAttribute(getText('imageNamePlaceholder'))}">
+
+        <div class="media-replace-actions media-modal-actions">
+          <button type="button" class="btn btn-primary" id="mediaUploadInsert">＋ ${getText('insertImage')}</button>
+          <button type="button" class="btn btn-ghost" id="chooseUploadFileBtn">📷 ${getText('uploadMedia')}</button>
+          <input type="file" id="uploadModalFileInput" accept="image/*,video/*" multiple hidden>
+        </div>
+      </div>
+
+      <div class="media-modal-pane" data-media-pane="list" role="tabpanel" hidden>
+        <div class="media-list media-list-modal" id="mediaUploadList"></div>
+      </div>
+
+      <p class="media-edit-status" id="mediaUploadStatus"></p>
+      <div class="modal-actions media-edit-actions">
+        <div></div>
+        <div>
+          <button type="button" class="btn btn-danger" id="mediaUploadCancel">${getText('cancel')}</button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(backdrop);
+  const close = () => backdrop.remove();
+  const urlInput = backdrop.querySelector('#mediaUploadUrlInput');
+  const nameInput = backdrop.querySelector('#mediaUploadNameInput');
+  const fileInput = backdrop.querySelector('#uploadModalFileInput');
+  const status = backdrop.querySelector('#mediaUploadStatus');
+  const chooseFileBtn = backdrop.querySelector('#chooseUploadFileBtn');
+  const insertBtn = backdrop.querySelector('#mediaUploadInsert');
+  const list = backdrop.querySelector('#mediaUploadList');
+  const tabs = backdrop.querySelectorAll('.media-modal-tab');
+  const panes = backdrop.querySelectorAll('.media-modal-pane');
+
+  const renderListPane = () => {
+    const existingImages = parseEditorImages(textarea.value);
+    if (existingImages.length) {
+      list.innerHTML = existingImages.map((media) => `
+        <div class="media-row media-row-modal" data-media-id="${media.id}">
+          <div class="media-thumb">
+            <img src="${escapeAttribute(media.src)}" alt="${escapeAttribute(media.caption || getText('imageName'))}">
+          </div>
+          <div class="media-row-details">
+            <input class="media-name-input" type="text" value="${escapeAttribute(media.caption)}" placeholder="${escapeAttribute(getText('imageNamePlaceholder'))}" aria-label="${escapeAttribute(getText('imageName'))}">
+            <span class="media-source" title="${escapeAttribute(media.src)}">${escapeHtml(media.src)}</span>
+          </div>
+          <button type="button" class="btn btn-ghost media-edit-button">${getText('editImage')}</button>
+        </div>
+      `).join('');
+
+      list.querySelectorAll('.media-row').forEach((row, index) => {
+        const media = existingImages[index];
+        row.querySelector('.media-name-input').addEventListener('change', (event) => {
+          replaceEditorImage(textarea, media, media.src, event.target.value);
+          setMediaStatus(getText('imageUpdated'));
+          renderListPane();
+        });
+        row.querySelector('.media-edit-button').addEventListener('click', () => {
+          openMediaEditDialog(textarea, media);
+        });
+      });
+    } else {
+      list.innerHTML = `<p class="media-empty">${getText('noImages')}</p>`;
+    }
+  };
+
+  tabs.forEach((tab) => {
+    tab.addEventListener('click', () => {
+      const target = tab.dataset.mediaTab;
+      tabs.forEach((item) => {
+        const active = item === tab;
+        item.classList.toggle('is-active', active);
+        item.setAttribute('aria-selected', active ? 'true' : 'false');
+      });
+      panes.forEach((pane) => {
+        const active = pane.dataset.mediaPane === target;
+        pane.classList.toggle('is-active', active);
+        pane.hidden = !active;
+      });
+      if (target === 'list') renderListPane();
+    });
+  });
+
+  renderListPane();
+
+  backdrop.querySelector('.media-edit-close').addEventListener('click', close);
+  backdrop.querySelector('#mediaUploadCancel').addEventListener('click', close);
+  backdrop.addEventListener('click', (event) => {
+    if (event.target === backdrop) close();
+  });
+
+  chooseFileBtn.addEventListener('click', () => fileInput.click());
+  fileInput.addEventListener('change', async () => {
+    const files = fileInput.files ? [...fileInput.files] : [];
+    if (!files.length) return;
+
+    try {
+      status.textContent = getText('uploadingImage');
+      await handleMediaUpload(files, textarea);
+      renderListPane();
+      tabs.forEach((item) => {
+        const target = item.dataset.mediaTab === 'list';
+        item.classList.toggle('is-active', target);
+        item.setAttribute('aria-selected', target ? 'true' : 'false');
+      });
+      panes.forEach((pane) => {
+        const target = pane.dataset.mediaPane === 'list';
+        pane.classList.toggle('is-active', target);
+        pane.hidden = !target;
+      });
+      close();
+    } catch (error) {
+      status.textContent = error.message || getText('invalidImageFile');
+    }
+  });
+
+  insertBtn.addEventListener('click', () => {
+    const url = urlInput.value.trim();
+    if (!url) {
+      status.textContent = getText('invalidImageUrl');
+      urlInput.focus();
+      return;
+    }
+
+    if (!isValidImageSource(url)) {
+      status.textContent = getText('invalidImageUrl');
+      urlInput.focus();
+      return;
+    }
+
+    const caption = nameInput.value.trim() || getText('defaultImageCaption');
+    insertTextAtSelection(textarea, `\n![${safeMarkdownCaption(caption)}](${url})\n`);
+    setMediaStatus(getText('imageReady'));
+    renderListPane();
+    close();
+  });
+
+  urlInput.focus();
+}
+
 function renderEditor(node) {
+  if (!document.body.classList.contains('edit-mode')) {
+    renderContent();
+    return;
+  }
+
+  const originalContent = node.content || '';
+
   contentEl.innerHTML = `
     <div class="page-header">
       <h1 class="page-title">${escapeHtml(node.title)}</h1>
@@ -1111,28 +1350,6 @@ function renderEditor(node) {
         </div>
 
         <input type="file" id="mediaUploadInput" accept="image/*,video/*" multiple hidden>
-        <section class="media-manager" id="mediaManager" aria-labelledby="mediaManagerTitle">
-          <div class="media-manager-header">
-            <div>
-              <h3 id="mediaManagerTitle">${getText('mediaManager')}</h3>
-              <p>${getText('mediaManagerHint')}</p>
-            </div>
-          </div>
-          <div class="media-insert-row">
-            <div class="media-insert-field">
-              <label for="mediaUrlInput">${getText('imageUrl')}</label>
-              <input id="mediaUrlInput" type="url" placeholder="${escapeAttribute(getText('imageUrlPlaceholder'))}">
-            </div>
-            <div class="media-insert-field media-name-field">
-              <label for="mediaNameInput">${getText('imageName')}</label>
-              <input id="mediaNameInput" type="text" placeholder="${escapeAttribute(getText('imageNamePlaceholder'))}">
-            </div>
-            <button type="button" class="btn btn-primary media-insert-button" id="btnInsertImage">＋ ${getText('insertImage')}</button>
-            <button type="button" class="btn btn-ghost media-upload-button" id="btnUploadImage">📷 ${getText('uploadMedia')}</button>
-          </div>
-          <p class="media-status" id="mediaStatus" aria-live="polite"></p>
-          <div class="media-list" id="mediaList"></div>
-        </section>
         <div class="editor-body">
           <textarea class="editor-textarea" id="editorTextarea" spellcheck="false">${escapeHtml(node.content || '')}</textarea>
         </div>
@@ -1149,31 +1366,60 @@ function renderEditor(node) {
   `;
   const textarea = document.getElementById('editorTextarea');
   const mediaInput = document.getElementById('mediaUploadInput');
-  renderMediaManager(textarea);
-  textarea.addEventListener('input', () => renderMediaManager(textarea));
+  const uploadMediaBtn = document.getElementById('btnUploadMedia');
+  const previewBtn = document.getElementById('btnPreview');
 
-  document.getElementById('btnUploadMedia').addEventListener('click', () => mediaInput.click());
-  document.getElementById('btnUploadImage').addEventListener('click', () => mediaInput.click());
-  mediaInput.addEventListener('change', async () => {
-    await handleMediaUpload(mediaInput.files, textarea);
-    mediaInput.value = '';
-  });
-  document.getElementById('btnInsertImage').addEventListener('click', () => {
-    const urlInput = document.getElementById('mediaUrlInput');
-    const nameInput = document.getElementById('mediaNameInput');
-    const url = urlInput.value.trim();
-    if (!isValidImageSource(url)) {
-      setMediaStatus(getText('invalidImageUrl'), true);
-      urlInput.focus();
+  const askBeforeLeavingEditor = (nextAction) => {
+    const isDirty = hasUnsavedChanges(textarea.value, originalContent);
+    if (!isDirty) {
+      nextAction();
       return;
     }
 
-    const caption = nameInput.value.trim() || getText('defaultImageCaption');
-    insertTextAtSelection(textarea, `\n![${safeMarkdownCaption(caption)}](${url})\n`);
-    urlInput.value = '';
-    nameInput.value = '';
-    setMediaStatus(getText('imageReady'));
-  });
+    const confirmBackdrop = document.createElement('div');
+    confirmBackdrop.className = 'modal-backdrop';
+    confirmBackdrop.innerHTML = `
+      <div class="modal" role="dialog" aria-modal="true">
+        <h3>${getText('confirmAction')}</h3>
+        <p style="color:var(--text-muted); font-size:14px; margin-top:-6px;">Perubahan belum disimpan. Simpan dahulu?</p>
+        <div class="modal-actions">
+          <button class="btn btn-ghost" id="unsavedCancel">${getText('cancel')}</button>
+          <button class="btn btn-danger" id="unsavedDiscard">Discard</button>
+          <button class="btn btn-primary" id="unsavedSave">${getText('save')}</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(confirmBackdrop);
+    const close = () => confirmBackdrop.remove();
+    confirmBackdrop.querySelector('#unsavedCancel').addEventListener('click', close);
+    confirmBackdrop.querySelector('#unsavedDiscard').addEventListener('click', () => {
+      close();
+      nextAction();
+    });
+    confirmBackdrop.querySelector('#unsavedSave').addEventListener('click', () => {
+      node.content = textarea.value;
+      saveState();
+      close();
+      nextAction();
+    });
+    confirmBackdrop.addEventListener('click', (event) => {
+      if (event.target === confirmBackdrop) close();
+    });
+  };
+
+  renderMediaManager(textarea);
+  textarea.addEventListener('input', () => renderMediaManager(textarea));
+
+  if (uploadMediaBtn) {
+    uploadMediaBtn.addEventListener('click', () => openMediaUploadModal(textarea));
+  }
+
+  if (mediaInput) {
+    mediaInput.addEventListener('change', async () => {
+      await handleMediaUpload(mediaInput.files, textarea);
+      mediaInput.value = '';
+    });
+  }
   contentEl.querySelectorAll('.tb-btn').forEach(button => {
     button.addEventListener('click', () => {
       const start = textarea.selectionStart;
@@ -1210,23 +1456,47 @@ function renderEditor(node) {
       textarea.focus();
     });
   });
-  document.getElementById('btnPreview').addEventListener('click', () => {
-    const preview = document.createElement('div');
-    preview.className = 'markdown-body editor-preview';
-    preview.innerHTML = renderMarkdown(textarea.value);
-    document.getElementById('mediaManager').hidden = true;
-    textarea.replaceWith(preview);
-    document.getElementById('btnPreview').textContent = '✎';
-    document.getElementById('btnPreview').title = getText('backToEditor');
-    document.getElementById('btnPreview').onclick = () => renderEditor(node);
-  });
-  document.getElementById('btnCancelEdit').addEventListener('click', renderContent);
-  document.getElementById('btnSaveEdit').addEventListener('click', () => {
+  if (previewBtn) {
+    previewBtn.addEventListener('click', () => {
+      const existingPreview = contentEl.querySelector('.editor-preview');
+      if (existingPreview) {
+        existingPreview.replaceWith(textarea);
+        previewBtn.textContent = '◉';
+        previewBtn.title = getText('preview');
+        return;
+      }
+
+      const preview = document.createElement('div');
+      preview.className = 'markdown-body editor-preview';
+      preview.innerHTML = renderMarkdown(textarea.value);
+      textarea.replaceWith(preview);
+      previewBtn.textContent = '✎';
+      previewBtn.title = getText('backToEditor');
+    });
+  }
+
+  const cancelBtn = document.getElementById('btnCancelEdit');
+  const saveBtn = document.getElementById('btnSaveEdit');
+  cancelBtn?.addEventListener('click', () => askBeforeLeavingEditor(renderContent));
+  saveBtn?.addEventListener('click', () => {
     node.content = textarea.value;
     saveState();
     renderContent();
   });
 }
+
+function ensureEditControlsHiddenWhenDisabled() {
+  const editOnlyEls = document.querySelectorAll('.edit-only');
+  editOnlyEls.forEach((el) => {
+    const shouldShow = document.body.classList.contains('edit-mode');
+    if (shouldShow) {
+      el.style.display = '';
+    } else {
+      el.style.display = 'none';
+    }
+  });
+}
+
 
 function escapeHtml(str) {
   const div = document.createElement('div');
@@ -1516,6 +1786,67 @@ function initEditMode() {
 }
 
 function setEditMode(on) {
+  const currentlyOn = document.body.classList.contains('edit-mode');
+  if (currentlyOn && !on) {
+    const activeNode = state.activeId ? findNode(state.activeId) : null;
+    const activeEditor = document.getElementById('editorTextarea');
+    const hasChanges = activeNode && activeEditor && hasUnsavedChanges(activeEditor.value, activeNode.content || '');
+    if (hasChanges) {
+      const confirmBackdrop = document.createElement('div');
+      confirmBackdrop.className = 'modal-backdrop';
+      confirmBackdrop.innerHTML = `
+        <div class="modal" role="dialog" aria-modal="true">
+          <h3>${getText('confirmAction')}</h3>
+          <p style="color:var(--text-muted); font-size:14px; margin-top:-6px;">Perubahan belum disimpan. Simpan dahulu?</p>
+          <div class="modal-actions">
+            <button class="btn btn-ghost" id="editToggleCancel">${getText('cancel')}</button>
+            <button class="btn btn-danger" id="editToggleDiscard">Discard</button>
+            <button class="btn btn-primary" id="editToggleSave">${getText('save')}</button>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(confirmBackdrop);
+      const close = () => confirmBackdrop.remove();
+      confirmBackdrop.querySelector('#editToggleCancel').addEventListener('click', close);
+      confirmBackdrop.querySelector('#editToggleDiscard').addEventListener('click', () => {
+        close();
+        document.body.classList.toggle('edit-mode', false);
+        const editBtn = document.getElementById('editModeToggle');
+        if (editBtn) editBtn.classList.toggle('active', false);
+        const label = editBtn?.querySelector('span');
+        if (label) label.textContent = getText('editMode');
+        localStorage.setItem(EDIT_KEY, 'false');
+        syncSettingsPanel();
+        const node = state.activeId ? findNode(state.activeId) : null;
+        if (node) applyEditModeToTitle(node);
+        ensureEditControlsHiddenWhenDisabled();
+        renderContent();
+      });
+      confirmBackdrop.querySelector('#editToggleSave').addEventListener('click', () => {
+        if (activeNode && activeEditor) {
+          activeNode.content = activeEditor.value;
+          saveState();
+        }
+        close();
+        document.body.classList.toggle('edit-mode', false);
+        const editBtn = document.getElementById('editModeToggle');
+        if (editBtn) editBtn.classList.toggle('active', false);
+        const label = editBtn?.querySelector('span');
+        if (label) label.textContent = getText('editMode');
+        localStorage.setItem(EDIT_KEY, 'false');
+        syncSettingsPanel();
+        const node = state.activeId ? findNode(state.activeId) : null;
+        if (node) applyEditModeToTitle(node);
+        ensureEditControlsHiddenWhenDisabled();
+        renderContent();
+      });
+      confirmBackdrop.addEventListener('click', (event) => {
+        if (event.target === confirmBackdrop) close();
+      });
+      return;
+    }
+  }
+
   document.body.classList.toggle('edit-mode', on);
   const editBtn = document.getElementById('editModeToggle');
   if (editBtn) editBtn.classList.toggle('active', on);
@@ -1525,6 +1856,7 @@ function setEditMode(on) {
   syncSettingsPanel();
   const node = state.activeId ? findNode(state.activeId) : null;
   if (node) applyEditModeToTitle(node);
+  ensureEditControlsHiddenWhenDisabled();
 }
 
 /* ---------- Theme toggle ---------- */
@@ -1566,12 +1898,14 @@ function initSidebarToggle() {
   applySidebarState(collapsed);
   syncOverlay();
 
-  toggle.addEventListener('click', (event) => {
-    event.stopPropagation();
+  const handleToggle = (event) => {
+    if (event) event.stopPropagation();
     const next = !document.body.classList.contains('sidebar-collapsed');
     applySidebarState(next);
     syncOverlay();
-  });
+  };
+
+  toggle.addEventListener('click', handleToggle);
 
   overlay.addEventListener('click', () => {
     applySidebarState(true);
@@ -1613,6 +1947,10 @@ function applySidebarState(collapsed) {
   sidebarEl.classList.toggle('collapsed', collapsed);
   sidebarEl.setAttribute('aria-expanded', String(!collapsed));
   localStorage.setItem(SIDEBAR_KEY, String(collapsed));
+
+  if (!collapsed && !isMobile) {
+    setSidebarWidth(getSidebarWidth());
+  }
 
   if (isMobile) {
     sidebarEl.classList.toggle('mobile-open', !collapsed);
@@ -1720,6 +2058,7 @@ async function init() {
   initEditMode();
   initSettings();
   initSidebarToggle();
+  initSidebarResize();
   initAddRoot();
   initDataTransfer();
   initSearch();

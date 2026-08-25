@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { normalizeDocumentState, normalizeBookTitle } from '../src/data-store.js';
+import { normalizeDocumentState, normalizeBookTitle, hasUnsavedChanges } from '../src/data-store.js';
+import { clampSidebarWidth } from '../src/sidebar-resize.js';
 import { isSpaRoute } from '../server.js';
 
 test('normalizeDocumentState returns valid page tree and active id', () => {
@@ -27,6 +28,18 @@ test('normalizeBookTitle trims and falls back to the default title', () => {
   assert.equal(normalizeBookTitle('  Masakanku  '), 'Masakanku');
   assert.equal(normalizeBookTitle('   '), 'RecipeBook');
   assert.equal(normalizeBookTitle(null), 'RecipeBook');
+});
+
+test('hasUnsavedChanges detects content edits that differ from the saved version', () => {
+  assert.equal(hasUnsavedChanges('hello', 'hello'), false);
+  assert.equal(hasUnsavedChanges('hello world', 'hello'), true);
+  assert.equal(hasUnsavedChanges('', null), true);
+});
+
+test('clampSidebarWidth keeps the sidebar within allowed resize bounds', () => {
+  assert.equal(clampSidebarWidth(120), 180);
+  assert.equal(clampSidebarWidth(500), 480);
+  assert.equal(clampSidebarWidth(260), 260);
 });
 
 test('isSpaRoute excludes api routes from the frontend fallback', () => {
