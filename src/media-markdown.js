@@ -99,3 +99,31 @@ export function serializeMarkdownImage({ caption, src, title = '' }) {
   const safeTitle = String(title || '').replace(/[\r\n"]/g, '').trim();
   return `![${safeCaption}](${src}${safeTitle ? ` "${safeTitle}"` : ''})`;
 }
+
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+export function markdownImagesToGalleryMarkup(source = '') {
+  const images = parseMarkdownImages(source);
+  if (!images.length) return '';
+
+  const visibleCount = Math.min(3, images.length);
+  const overflowCount = Math.max(0, images.length - visibleCount);
+  const galleryClass = `media-gallery media-gallery-grid-${visibleCount}`;
+
+  const markup = images.map((image, index) => {
+    const caption = image.caption || 'Image';
+    const href = escapeHtml(image.src);
+    const alt = escapeHtml(caption);
+    const isOverflow = index >= visibleCount;
+    return `<a href="${href}" class="media-item${isOverflow ? ' media-item-overflow' : ''}" data-media-type="image" data-sub-html="${escapeHtml(caption)}" aria-label="${alt}"><img src="${href}" alt="${alt}" /></a>`;
+  }).join('');
+
+  return `<div class="${galleryClass}" data-overflow-count="${overflowCount}">${markup}${overflowCount ? `<span class="media-more-overlay">+${overflowCount} more</span>` : ''}</div>`;
+}

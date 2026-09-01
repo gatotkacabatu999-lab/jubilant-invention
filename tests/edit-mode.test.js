@@ -1,7 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { shouldExitEditUIWhenDisabled } from '../src/edit-mode.js';
+import {
+  getDefaultEditorToolMode,
+  shouldExitEditUIWhenDisabled
+} from '../src/edit-mode.js';
+
+test('default editor toolbar opens the media tools so upload/file actions are visible', () => {
+  assert.equal(getDefaultEditorToolMode(), 'media');
+});
 
 test('edit mode should close an active editor immediately when the toggle is turned off', () => {
   assert.equal(

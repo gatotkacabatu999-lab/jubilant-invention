@@ -103,3 +103,8 @@ export function normalizeDocumentState(raw = {}) {
     bookTitle
   };
 }
+
+export function hasUnsavedChanges(currentValue, lastSavedValue) {
+  if (currentValue == null && lastSavedValue == null) return false;
+  return currentValue !== lastSavedValue;
+}

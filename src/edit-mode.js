@@ -1,3 +1,7 @@
+export function getDefaultEditorToolMode() {
+  return 'media';
+}
+
 export function shouldExitEditUIWhenDisabled({
   editModeEnabled,
   editorOpen,

@@ -16,7 +16,9 @@ import {
   parseChartDefinition,
   serializeChartBlock
 } from '../src/chart-markdown.js';
+import { getDefaultEditorToolMode } from '../src/edit-mode.js';
 import { parseMarkdownImages, serializeMarkdownImage } from '../src/media-markdown.js';
+import { sanitizeFileName, serializeFileLink } from '../src/file-markdown.js';
 
 const STORAGE_KEY = 'docbook_data_v1';
 const THEME_KEY = 'docbook_theme';
@@ -122,6 +124,13 @@ const translations = {
     danger: 'Danger',
     quote: 'Quote',
     uploadMedia: 'Muat naik gambar',
+    insertFile: 'Masukkan fail',
+    fileUploadTitle: 'Lampirkan fail',
+    fileUploadHint: 'Tambah satu fail ke halaman sebagai pautan Markdown.',
+    fileUrl: 'URL fail',
+    fileName: 'Nama fail',
+    fileLinkReady: 'Fail ditambah ke kandungan.',
+    invalidFile: 'Sila pilih fail yang sah.',
     imageUrl: 'URL imej',
     imageName: 'Nama imej',
     defaultImageCaption: 'Imej',
@@ -262,6 +271,13 @@ const translations = {
     danger: 'Danger',
     quote: 'Quote',
     uploadMedia: 'Upload image',
+    insertFile: 'Insert file',
+    fileUploadTitle: 'Attach a file',
+    fileUploadHint: 'Add a file to the page as a Markdown link.',
+    fileUrl: 'File URL',
+    fileName: 'File name',
+    fileLinkReady: 'File added to the content.',
+    invalidFile: 'Please choose a valid file.',
     imageUrl: 'Image URL',
     imageName: 'Image name',
     defaultImageCaption: 'Image',
@@ -1452,6 +1468,160 @@ async function handleMediaUpload(files, textarea, captionOverride = '') {
   }
 }
 
+function formatFileSize(size) {
+  if (!Number.isFinite(size) || size <= 0) return '';
+  const units = ['B', 'KB', 'MB', 'GB'];
+  let value = size;
+  let unitIndex = 0;
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024;
+    unitIndex += 1;
+  }
+  return `${value.toFixed(value >= 10 || unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`;
+}
+
+async function handleFileUpload(files, textarea, nameOverride = '') {
+  const selectedFiles = [...(files || [])];
+  if (!selectedFiles.length) {
+    setMediaStatus(getText('invalidFile'), true);
+    return false;
+  }
+
+  try {
+    const snippets = [];
+    for (const file of selectedFiles) {
+      const dataUrl = await readFileAsDataUrl(file);
+      const title = (nameOverride || file.name || 'File').trim() || 'File';
+      const href = dataUrl;
+      const safeName = sanitizeFileName(title);
+      snippets.push(serializeFileLink({
+        name: safeName,
+        href,
+        size: formatFileSize(file.size)
+      }));
+    }
+    insertTextAtSelection(textarea, `\n${snippets.join('\n')}\n`);
+    setMediaStatus(getText('fileLinkReady'));
+    return true;
+  } catch (error) {
+    console.warn('Unable to read attached file', error);
+    setMediaStatus(error.message || getText('invalidFile'), true);
+    return false;
+  }
+}
+
+function openFileUploadModal(textarea) {
+  const existing = document.querySelector('.media-upload-backdrop');
+  if (existing) existing.remove();
+
+  const backdrop = document.createElement('div');
+  backdrop.className = 'modal-backdrop media-upload-backdrop';
+  backdrop.innerHTML = `
+    <div class="modal media-upload-modal" role="dialog" aria-modal="true" aria-labelledby="fileUploadTitle">
+      <div class="media-edit-heading">
+        <div>
+          <p class="media-edit-eyebrow">${getText('mediaManager')}</p>
+          <h3 id="fileUploadTitle">${getText('fileUploadTitle')}</h3>
+        </div>
+        <button type="button" class="icon-btn media-upload-close" aria-label="${getText('close')}">×</button>
+      </div>
+      <p class="media-upload-hint">${getText('fileUploadHint')}</p>
+      <div class="media-upload-file-row">
+        <button type="button" class="btn btn-ghost" id="chooseFileUpload">📁 ${getText('selectFile')}</button>
+        <span class="media-file-status" id="fileUploadStatus">${getText('noFileSelected')}</span>
+        <input type="file" id="fileUploadInput" hidden>
+      </div>
+      <label class="media-field-label" for="fileUploadUrl">${getText('fileUrl')}</label>
+      <input id="fileUploadUrl" type="url" placeholder="https://example.com/file.pdf">
+      <label class="media-field-label" for="fileUploadName">${getText('fileName')}</label>
+      <input id="fileUploadName" type="text" placeholder="Report.pdf">
+      <p class="media-status" id="mediaStatus" aria-live="polite"></p>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-ghost" id="fileUploadCancel">${getText('cancel')}</button>
+        <button type="button" class="btn btn-primary" id="fileUploadSubmit">📎 ${getText('insertFile')}</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(backdrop);
+
+  const fileInput = backdrop.querySelector('#fileUploadInput');
+  const chooseButton = backdrop.querySelector('#chooseFileUpload');
+  const status = backdrop.querySelector('#mediaStatus');
+  const fileStatus = backdrop.querySelector('#fileUploadStatus');
+  const urlInput = backdrop.querySelector('#fileUploadUrl');
+  const nameInput = backdrop.querySelector('#fileUploadName');
+  const submitButton = backdrop.querySelector('#fileUploadSubmit');
+  let selectedFile = null;
+
+  const close = () => backdrop.remove();
+  backdrop.querySelector('.media-upload-close').addEventListener('click', close);
+  backdrop.querySelector('#fileUploadCancel').addEventListener('click', close);
+  backdrop.addEventListener('click', (event) => {
+    if (event.target === backdrop) close();
+  });
+
+  chooseButton.addEventListener('click', () => fileInput.click());
+  fileInput.addEventListener('change', () => {
+    const file = fileInput.files?.[0] || null;
+    selectedFile = file;
+    urlInput.value = '';
+    fileStatus.textContent = file ? `${getText('fileSelected')}: ${file.name}` : getText('noFileSelected');
+    if (!nameInput.value.trim() && file?.name) {
+      nameInput.value = file.name;
+    }
+  });
+
+  urlInput.addEventListener('input', () => {
+    if (urlInput.value.trim()) {
+      selectedFile = null;
+      fileInput.value = '';
+      fileStatus.textContent = getText('noFileSelected');
+    }
+  });
+
+  submitButton.addEventListener('click', async () => {
+    const fileUrl = urlInput.value.trim();
+    const fileName = (nameInput.value || selectedFile?.name || 'File').trim() || 'File';
+    if (!selectedFile && !fileUrl) {
+      status.textContent = getText('invalidFile');
+      status.classList.add('is-error');
+      return;
+    }
+
+    submitButton.disabled = true;
+    chooseButton.disabled = true;
+
+    try {
+      if (selectedFile) {
+        const uploaded = await handleFileUpload([selectedFile], textarea, fileName);
+        if (uploaded) {
+          close();
+          return;
+        }
+      } else {
+        const candidateUrl = new URL(fileUrl, window.location.href).toString();
+        const link = serializeFileLink({
+          name: sanitizeFileName(fileName),
+          href: candidateUrl,
+          size: ''
+        });
+        insertTextAtSelection(textarea, `\n${link}\n`);
+        setMediaStatus(getText('fileLinkReady'));
+        close();
+        return;
+      }
+    } catch (error) {
+      status.textContent = error.message || getText('invalidFile');
+      status.classList.add('is-error');
+    }
+
+    submitButton.disabled = false;
+    chooseButton.disabled = false;
+  });
+
+  nameInput.focus();
+}
+
 function openMediaUploadModal(textarea) {
   const existing = document.querySelector('.media-upload-backdrop');
   if (existing) existing.remove();
@@ -1968,6 +2138,7 @@ function renderEditor(node) {
             </div>
             <div class="editor-toolbar-group editor-tool-panel" data-tool-panel="media" hidden>
               <button class="tb-btn" id="btnUploadMedia" title="${getText('uploadMedia')}">📷</button>
+              <button class="tb-btn" id="btnInsertFile" title="${getText('insertFile')}">📎</button>
               <button class="tb-btn" id="btnInsertChart" title="${getText('insertChart')}">📊</button>
               <button class="tb-btn" id="btnPreview" title="${getText('preview')}">◉</button>
             </div>
@@ -2014,7 +2185,8 @@ function renderEditor(node) {
   const toolModeButton = document.getElementById('editorToolMode');
   const toolModeLabel = document.getElementById('editorToolModeLabel');
   const toolPanels = contentEl.querySelectorAll('.editor-tool-panel');
-  let activeToolMode = 0;
+  let activeToolMode = toolModes.findIndex((mode) => mode.key === getDefaultEditorToolMode());
+  if (activeToolMode < 0) activeToolMode = 0;
   const updateToolMode = () => {
     const mode = toolModes[activeToolMode];
     toolModeLabel.textContent = getText(mode.label);
@@ -2030,6 +2202,7 @@ function renderEditor(node) {
   updateToolMode();
 
   document.getElementById('btnUploadMedia').addEventListener('click', () => openMediaUploadModal(textarea));
+  document.getElementById('btnInsertFile').addEventListener('click', () => openFileUploadModal(textarea));
   document.getElementById('btnInsertChart').addEventListener('click', () => openChartBuilderModal(textarea));
   contentEl.querySelectorAll('.tb-btn').forEach(button => {
     if (!button.dataset.prefix && !button.dataset.snippet && !button.dataset.callout) return;
