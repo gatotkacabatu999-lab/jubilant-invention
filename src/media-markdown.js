@@ -94,35 +94,6 @@ export function parseMarkdownImages(text) {
   return images;
 }
 
-function escapeHtmlAttribute(value) {
-  return String(value || '')
-    .replace(/&/g, '&amp;')
-    .replace(/"/g, '&quot;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
-}
-
-export function markdownImagesToGalleryMarkup(text) {
-  const images = parseMarkdownImages(String(text || ''));
-  if (!images.length) return '';
-
-  const overflowCount = Math.max(images.length - 3, 0);
-  const hasOverflow = overflowCount > 0;
-  const galleryClass = images.length > 1 ? 'media-gallery media-gallery-grid-3' : 'media-gallery';
-
-  return `<div class="${galleryClass}" data-overflow-count="${overflowCount}">${images.map((image, index) => {
-    const caption = image.caption || image.title || 'Image';
-    const src = escapeHtmlAttribute(image.src);
-    const label = escapeHtmlAttribute(caption);
-    const isOverflowItem = hasOverflow && index === 2;
-    const extraClass = isOverflowItem ? ' media-item-overflow' : '';
-    const overlay = isOverflowItem ? `<span class="media-item-more">+${overflowCount} more</span>` : '';
-    const hiddenClass = hasOverflow && index >= 3 ? ' media-item-hidden' : '';
-
-    return `<a href="${src}" class="media-item${extraClass}${hiddenClass}" data-media-type="image"><img src="${src}" alt="${label}" />${overlay}</a>`;
-  }).join('')}</div>`;
-}
-
 export function serializeMarkdownImage({ caption, src, title = '' }) {
   const safeCaption = String(caption || '').replace(/[\r\n\[\]]/g, '').trim() || 'Imej';
   const safeTitle = String(title || '').replace(/[\r\n"]/g, '').trim();

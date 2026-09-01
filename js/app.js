@@ -3,23 +3,37 @@
    Data model, persisted in localStorage, no backend needed.
    ========================================================= */
 import '../css/style.css';
-import '../css/lightgallery.css';
+import 'lightgallery.js/dist/css/lightgallery.css';
 import 'lightgallery.js/dist/js/lightgallery.js';
+import 'lg-thumbnail.js/dist/lg-thumbnail.js';
+import 'lg-zoom.js/dist/lg-zoom.js';
 import { marked } from 'marked';
 import { DEFAULT_BOOK_TITLE, normalizeBookTitle, normalizeDocumentState } from '../src/data-store.js';
-import { clampSidebarWidth } from '../src/sidebar-resize.js';
-import { markdownImagesToGalleryMarkup, parseMarkdownImages, serializeMarkdownImage } from '../src/media-markdown.js';
+import {
+  buildChartArcPath,
+  getChartFractions,
+  normalizeChartDefinition,
+  parseChartDefinition,
+  serializeChartBlock
+} from '../src/chart-markdown.js';
+import { parseMarkdownImages, serializeMarkdownImage } from '../src/media-markdown.js';
 
 const STORAGE_KEY = 'docbook_data_v1';
 const THEME_KEY = 'docbook_theme';
 const EDIT_KEY = 'docbook_edit_mode';
 const SIDEBAR_KEY = 'docbook_sidebar_collapsed';
-const SIDEBAR_WIDTH_KEY = 'docbook_sidebar_width';
 const LANG_KEY = 'docbook_language';
 
 const translations = {
   ms: {
     settings: 'Tetapan',
+    share: 'Kongsi',
+    sharePage: 'Kongsi halaman',
+    shareHint: 'Salin pautan halaman ini untuk dikongsi.',
+    shareLink: 'Pautan halaman',
+    copyLink: 'Salin pautan',
+    copiedLink: 'Pautan disalin',
+    nativeShare: 'Kongsi melalui peranti',
     general: 'Umum',
     appearance: 'Penampilan',
     generalDescription: 'Urus identiti dan bahasa RecipeBook anda.',
@@ -40,21 +54,57 @@ const translations = {
     ok: 'OK',
     save: 'Simpan',
     searchPlaceholder: 'Cari dokumen…',
+    searchNotFound: 'Search for "{query}" not found',
+    searchSuggestion: 'Try a different keyword or check your spelling.',
     addMenu: 'Tambah Menu',
     addSubmenu: 'Tambah Submenu',
     rename: 'Namakan semula',
     moveUp: 'Alih ke atas',
     moveDown: 'Alih ke bawah',
+    expandSubmenu: 'Buka submenu',
+    collapseSubmenu: 'Tutup submenu',
     duplicate: 'Duplikasi',
     deleteNode: 'Padam',
     confirmAction: 'Sahkan Tindakan',
     noPageSelected: 'Tiada halaman dipilih',
     noPageSelectedHint: 'Pilih halaman dari sidebar, atau tambah menu baharu dalam Edit Mode.',
     editContent: 'Edit Kandungan',
-    lastUpdated: 'Terakhir dikemas kini secara tempatan',
+    lastUpdatedJustNow: 'Terakhir dikemas kini sebentar tadi',
+    lastUpdatedMinutes: 'Terakhir dikemas kini {count} minit yang lalu',
+    lastUpdatedHours: 'Terakhir dikemas kini {count} jam yang lalu',
+    lastUpdatedDays: 'Terakhir dikemas kini {count} hari yang lalu',
+    lastUpdatedDate: 'Terakhir dikemas kini {date}',
     prev: 'Sebelumnya',
     next: 'Seterusnya',
     markdownSupported: 'Markdown disokong',
+    editorHint: 'Tulis kandungan dalam Markdown dan gunakan toolbar sebagai jalan pintas.',
+    editorReady: 'Tiada perubahan belum disimpan',
+    editorUnsaved: 'Ada perubahan belum disimpan',
+    characters: 'aksara',
+    editorToolbar: 'Toolbar',
+    switchToolGroup: 'Tukar kategori toolbar',
+    textTools: 'Teks',
+    blockTools: 'Blok',
+    calloutTools: 'Callout',
+    mediaTools: 'Media',
+    chart: 'Chart',
+    insertChart: 'Masukkan chart',
+    chartBuilderHint: 'Masukkan data anda sendiri dan pilih bentuk chart yang sesuai.',
+    chartTitle: 'Tajuk chart',
+    chartType: 'Jenis chart',
+    chartData: 'Data chart',
+    chartLabel: 'Label',
+    chartValue: 'Nilai',
+    addData: 'Tambah data',
+    removeData: 'Buang',
+    chartPreview: 'Preview chart',
+    chartBar: 'Bar',
+    chartLine: 'Line',
+    chartPie: 'Pie',
+    chartDoughnut: 'Donut / Circle',
+    chartPolar: 'Polar Area',
+    chartRadar: 'Radar',
+    chartNeedData: 'Masukkan sekurang-kurangnya dua data yang sah.',
     title: 'Tajuk',
     bold: 'Tebal',
     italic: 'Italik',
@@ -71,7 +121,7 @@ const translations = {
     success: 'Success',
     danger: 'Danger',
     quote: 'Quote',
-    uploadMedia: 'Muat naik gambar/video',
+    uploadMedia: 'Muat naik gambar',
     imageUrl: 'URL imej',
     imageName: 'Nama imej',
     defaultImageCaption: 'Imej',
@@ -95,6 +145,19 @@ const translations = {
     imageDeleted: 'Imej dipadam.',
     fileSelected: 'Fail dipilih',
     uploadingImage: 'Sedang memuat naik imej ke ImgBB…',
+    uploadMediaTitle: 'Muat naik media',
+    uploadMediaHint: 'Pilih fail image atau masukkan URL image untuk dimasukkan ke halaman.',
+    selectFile: 'Pilih fail',
+    noFileSelected: 'Belum ada fail dipilih.',
+    noMediaSelected: 'Pilih fail atau masukkan URL image.',
+    or: 'atau',
+    addImage: 'Tambah image',
+    upload: 'Muat naik',
+    uploadTab: 'Upload',
+    imageListTab: 'Senarai image',
+    uploadPasswordTitle: 'Buka akses upload',
+    uploadPasswordPlaceholder: 'Password upload',
+    uploadCancelled: 'Upload dibatalkan.',
     preview: 'Preview',
     backToEditor: 'Kembali ke editor',
     seeMore: 'Lihat lagi',
@@ -104,6 +167,13 @@ const translations = {
   },
   en: {
     settings: 'Settings',
+    share: 'Share',
+    sharePage: 'Share page',
+    shareHint: 'Copy this page link to share it.',
+    shareLink: 'Page link',
+    copyLink: 'Copy link',
+    copiedLink: 'Link copied',
+    nativeShare: 'Share from device',
     general: 'General',
     appearance: 'Appearance',
     generalDescription: 'Manage your RecipeBook identity and language.',
@@ -124,21 +194,57 @@ const translations = {
     ok: 'OK',
     save: 'Save',
     searchPlaceholder: 'Search documents…',
+    searchNotFound: 'Search for "{query}" not found',
+    searchSuggestion: 'Try a different keyword or check your spelling.',
     addMenu: 'Add Menu',
     addSubmenu: 'Add Submenu',
     rename: 'Rename',
     moveUp: 'Move up',
     moveDown: 'Move down',
+    expandSubmenu: 'Open submenu',
+    collapseSubmenu: 'Close submenu',
     duplicate: 'Duplicate',
     deleteNode: 'Delete',
     confirmAction: 'Confirm Action',
     noPageSelected: 'No page selected',
     noPageSelectedHint: 'Choose a page from the sidebar, or add a new menu in Edit Mode.',
     editContent: 'Edit Content',
-    lastUpdated: 'Last updated locally',
+    lastUpdatedJustNow: 'Last updated just now',
+    lastUpdatedMinutes: 'Last updated {count} minutes ago',
+    lastUpdatedHours: 'Last updated {count} hours ago',
+    lastUpdatedDays: 'Last updated {count} days ago',
+    lastUpdatedDate: 'Last updated {date}',
     prev: 'Previous',
     next: 'Next',
     markdownSupported: 'Markdown supported',
+    editorHint: 'Write in Markdown or use the toolbar as a shortcut.',
+    editorReady: 'No unsaved changes',
+    editorUnsaved: 'Unsaved changes',
+    characters: 'characters',
+    editorToolbar: 'Toolbar',
+    switchToolGroup: 'Switch toolbar category',
+    textTools: 'Text',
+    blockTools: 'Blocks',
+    calloutTools: 'Callouts',
+    mediaTools: 'Media',
+    chart: 'Chart',
+    insertChart: 'Insert chart',
+    chartBuilderHint: 'Enter your own data and choose the chart style that fits.',
+    chartTitle: 'Chart title',
+    chartType: 'Chart type',
+    chartData: 'Chart data',
+    chartLabel: 'Label',
+    chartValue: 'Value',
+    addData: 'Add data',
+    removeData: 'Remove',
+    chartPreview: 'Chart preview',
+    chartBar: 'Bar',
+    chartLine: 'Line',
+    chartPie: 'Pie',
+    chartDoughnut: 'Donut / Circle',
+    chartPolar: 'Polar Area',
+    chartRadar: 'Radar',
+    chartNeedData: 'Enter at least two valid data points.',
     title: 'Title',
     bold: 'Bold',
     italic: 'Italic',
@@ -155,7 +261,7 @@ const translations = {
     success: 'Success',
     danger: 'Danger',
     quote: 'Quote',
-    uploadMedia: 'Upload image/video',
+    uploadMedia: 'Upload image',
     imageUrl: 'Image URL',
     imageName: 'Image name',
     defaultImageCaption: 'Image',
@@ -179,6 +285,19 @@ const translations = {
     imageDeleted: 'Image deleted.',
     fileSelected: 'File selected',
     uploadingImage: 'Uploading image to ImgBB…',
+    uploadMediaTitle: 'Upload media',
+    uploadMediaHint: 'Choose an image file or enter an image URL to add to this page.',
+    selectFile: 'Choose file',
+    noFileSelected: 'No file selected yet.',
+    noMediaSelected: 'Choose a file or enter an image URL.',
+    or: 'or',
+    addImage: 'Add image',
+    upload: 'Upload',
+    uploadTab: 'Upload',
+    imageListTab: 'Image list',
+    uploadPasswordTitle: 'Unlock image uploads',
+    uploadPasswordPlaceholder: 'Upload password',
+    uploadCancelled: 'Upload cancelled.',
     preview: 'Preview',
     backToEditor: 'Back to editor',
     seeMore: 'See more',
@@ -234,7 +353,50 @@ function uid() {
 }
 
 /* ---------- Persistence ---------- */
+function ensurePageTimestamps(nodes, fallback = Date.now()) {
+  let changed = false;
+  (nodes || []).forEach((node) => {
+    const timestamp = typeof node.updatedAt === 'number'
+      ? node.updatedAt
+      : Date.parse(node.updatedAt || '');
+    if (!Number.isFinite(timestamp)) {
+      node.updatedAt = fallback;
+      changed = true;
+    } else if (node.updatedAt !== timestamp) {
+      node.updatedAt = timestamp;
+      changed = true;
+    }
+    if (ensurePageTimestamps(node.children, fallback)) changed = true;
+  });
+  return changed;
+}
+
+function touchNode(node) {
+  if (node) node.updatedAt = Date.now();
+}
+
+function getSharedPageId() {
+  const queryPageId = new URLSearchParams(window.location.search).get('page');
+  if (queryPageId) return queryPageId;
+  return new URLSearchParams(window.location.hash.slice(1)).get('page');
+}
+
+function syncSharedPageUrl(pageId) {
+  if (!pageId || !window.history?.replaceState) return;
+  const url = new URL(window.location.href);
+  url.hash = new URLSearchParams({ page: pageId }).toString();
+  window.history.replaceState(null, '', url);
+}
+
 async function loadState() {
+  const applyLoadedState = (normalized) => {
+    state.pages = normalized.pages;
+    state.activeId = normalized.activeId;
+    state.bookTitle = normalized.bookTitle;
+    const sharedPageId = getSharedPageId();
+    if (sharedPageId && findNode(sharedPageId, state.pages)) state.activeId = sharedPageId;
+  };
+
   try {
     const response = await fetch('/api/docbook', {
       headers: { Accept: 'application/json' }
@@ -243,8 +405,8 @@ async function loadState() {
     if (response.ok) {
       const parsed = await response.json();
       const normalized = normalizeDocumentState(parsed);
-      state.pages = normalized.pages;
-      state.activeId = normalized.activeId;
+      applyLoadedState(normalized);
+      if (ensurePageTimestamps(state.pages)) saveState();
       return;
     }
   } catch (error) {
@@ -256,9 +418,8 @@ async function loadState() {
     try {
       const parsed = JSON.parse(raw);
       const normalized = normalizeDocumentState(parsed);
-      state.pages = normalized.pages;
-      state.activeId = normalized.activeId;
-      state.bookTitle = normalized.bookTitle;
+      applyLoadedState(normalized);
+      if (ensurePageTimestamps(state.pages)) saveState();
       return;
     } catch (error) {
       console.warn('Invalid local state, rebuilding default data.', error);
@@ -266,11 +427,12 @@ async function loadState() {
   }
 
   const normalized = normalizeDocumentState({ pages: null, activeId: null, bookTitle: null });
-  state.pages = normalized.pages;
-  state.activeId = normalized.activeId;
-  state.bookTitle = normalized.bookTitle;
+  applyLoadedState(normalized);
+  ensurePageTimestamps(state.pages);
   saveState();
 }
+
+let remoteSaveQueue = Promise.resolve();
 
 function saveState() {
   const payload = {
@@ -278,17 +440,26 @@ function saveState() {
     activeId: state.activeId,
     bookTitle: normalizeBookTitle(state.bookTitle)
   };
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+  const serialized = JSON.stringify(payload);
+  localStorage.setItem(STORAGE_KEY, serialized);
 
-  fetch('/api/docbook', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify(payload)
-  }).catch(() => {
-    // Ignore remote save failures and keep local fallback working.
-  });
+  remoteSaveQueue = remoteSaveQueue
+    .catch(() => undefined)
+    .then(() => fetch('/api/docbook', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: serialized
+    }))
+    .then((response) => {
+      if (!response.ok) throw new Error(`Remote save failed with ${response.status}`);
+    })
+    .catch((error) => {
+      console.warn('Remote save unavailable; local copy remains saved.', error);
+    });
+
+  return remoteSaveQueue;
 }
 
 /* ---------- Tree helpers ---------- */
@@ -340,7 +511,8 @@ function duplicateNode(node) {
     id: uid(),
     title: `${node.title} (salinan)`,
     content: node.content || '',
-    children: node.children.map(duplicateNode)
+    children: node.children.map(duplicateNode),
+    updatedAt: Date.now()
   };
 }
 
@@ -360,57 +532,7 @@ const menuTreeEl = document.getElementById('menuTree');
 const contentEl = document.getElementById('content');
 const tplTreeItem = document.getElementById('tpl-tree-item');
 const sidebarEl = document.getElementById('sidebar');
-const sidebarResizer = document.getElementById('sidebarResizer');
 const searchInput = document.getElementById('searchInput');
-
-function getSidebarWidth() {
-  const saved = Number(localStorage.getItem(SIDEBAR_WIDTH_KEY));
-  if (!Number.isFinite(saved)) return 280;
-  return clampSidebarWidth(saved);
-}
-
-function setSidebarWidth(width) {
-  const nextWidth = clampSidebarWidth(width);
-  if (!sidebarEl) return;
-  sidebarEl.style.width = `${nextWidth}px`;
-  sidebarEl.style.minWidth = `${nextWidth}px`;
-  localStorage.setItem(SIDEBAR_WIDTH_KEY, String(nextWidth));
-}
-
-function initSidebarResize() {
-  if (!sidebarEl || !sidebarResizer) return;
-
-  const initialWidth = getSidebarWidth();
-  setSidebarWidth(initialWidth);
-
-  let dragging = false;
-  let startX = 0;
-  let startWidth = 0;
-
-  const stopDragging = () => {
-    dragging = false;
-    document.body.classList.remove('sidebar-resizing');
-    document.removeEventListener('pointermove', onPointerMove);
-    document.removeEventListener('pointerup', stopDragging);
-  };
-
-  function onPointerMove(event) {
-    if (!dragging) return;
-    const delta = event.clientX - startX;
-    setSidebarWidth(startWidth + delta);
-  }
-
-  sidebarResizer.addEventListener('pointerdown', (event) => {
-    if (!document.body.classList.contains('edit-mode')) return;
-    event.preventDefault();
-    dragging = true;
-    startX = event.clientX;
-    startWidth = sidebarEl.offsetWidth || getSidebarWidth();
-    document.body.classList.add('sidebar-resizing');
-    document.addEventListener('pointermove', onPointerMove);
-    document.addEventListener('pointerup', stopDragging);
-  });
-}
 
 /* ---------- Rendering: sidebar tree ---------- */
 function renderTree() {
@@ -432,11 +554,18 @@ function renderTreeNode(node) {
   if (!node.children.length) item.classList.add('no-children');
   if (node._expanded) item.classList.add('expanded');
 
-  node.children.forEach(child => childrenEl.appendChild(renderTreeNode(child)));
+  const childrenInner = document.createElement('div');
+  childrenInner.className = 'tree-children-inner';
+  node.children.forEach(child => childrenInner.appendChild(renderTreeNode(child)));
+  childrenEl.appendChild(childrenInner);
+  caret.setAttribute('aria-expanded', String(!!node._expanded));
+  caret.setAttribute('aria-label', node._expanded ? getText('collapseSubmenu') : getText('expandSubmenu'));
+  caret.disabled = !node.children.length;
 
   caret.addEventListener('click', (e) => {
     e.stopPropagation();
     node._expanded = !node._expanded;
+    saveState();
     renderTree();
   });
 
@@ -451,10 +580,9 @@ function renderTreeNode(node) {
   frag.querySelector('.act-add-child').setAttribute('title', getText('addSubmenu'));
   frag.querySelector('.act-add-child').addEventListener('click', (e) => {
     e.stopPropagation();
-    if (!document.body.classList.contains('edit-mode')) return;
     promptModal(getText('addSubmenu'), 'Nama submenu', '', (title) => {
       if (!title) return;
-      const newNode = { id: uid(), title, content: `# ${title}\n\nTulis kandungan di sini…`, children: [] };
+      const newNode = { id: uid(), title, content: `# ${title}\n\nTulis kandungan di sini…`, children: [], updatedAt: Date.now() };
       node.children.push(newNode);
       node._expanded = true;
       state.activeId = newNode.id;
@@ -467,10 +595,10 @@ function renderTreeNode(node) {
   frag.querySelector('.act-rename').setAttribute('title', getText('rename'));
   frag.querySelector('.act-rename').addEventListener('click', (e) => {
     e.stopPropagation();
-    if (!document.body.classList.contains('edit-mode')) return;
     promptModal(getText('rename'), 'Nama baharu', node.title, (title) => {
       if (!title) return;
       node.title = title;
+      touchNode(node);
       saveState();
       renderTree();
       renderContent();
@@ -480,21 +608,18 @@ function renderTreeNode(node) {
   frag.querySelector('.act-up').setAttribute('title', getText('moveUp'));
   frag.querySelector('.act-up').addEventListener('click', (e) => {
     e.stopPropagation();
-    if (!document.body.classList.contains('edit-mode')) return;
     moveNode(node.id, 'up');
   });
 
   frag.querySelector('.act-down').setAttribute('title', getText('moveDown'));
   frag.querySelector('.act-down').addEventListener('click', (e) => {
     e.stopPropagation();
-    if (!document.body.classList.contains('edit-mode')) return;
     moveNode(node.id, 'down');
   });
 
   frag.querySelector('.act-duplicate').setAttribute('title', getText('duplicate'));
   frag.querySelector('.act-duplicate').addEventListener('click', (e) => {
     e.stopPropagation();
-    if (!document.body.classList.contains('edit-mode')) return;
     const siblings = findParentArray(node.id);
     const index = siblings.findIndex(item => item.id === node.id);
     const copy = duplicateNode(node);
@@ -508,7 +633,6 @@ function renderTreeNode(node) {
   frag.querySelector('.act-delete').setAttribute('title', getText('deleteNode'));
   frag.querySelector('.act-delete').addEventListener('click', (e) => {
     e.stopPropagation();
-    if (!document.body.classList.contains('edit-mode')) return;
     confirmModal(`${getText('deleteNode')} "${node.title}" dan semua submenunya?`, () => {
       const wasActive = (state.activeId === node.id) || !!findNode(state.activeId, node.children);
       removeNode(node.id);
@@ -539,6 +663,7 @@ function renderContent() {
     return;
   }
 
+  syncSharedPageUrl(node.id);
   const path = findPath(node.id) || [node];
   const allPages = flattenSearch();
   const currentIndex = allPages.findIndex(page => page.id === node.id);
@@ -550,8 +675,6 @@ function renderContent() {
     breadcrumbEl.innerHTML = path.map((crumb, index) => `<span class="crumb-link" data-crumb-id="${crumb.id}">${escapeHtml(crumb.title)}</span>${index < path.length - 1 ? '<span class="crumb-sep">/</span>' : ''}`).join('');
   }
 
-  const isEditModeEnabled = document.body.classList.contains('edit-mode');
-
   contentEl.innerHTML = `
     <div class="page-header">
       <h1 class="page-title" id="pageTitle">${escapeHtml(node.title)}</h1>
@@ -559,36 +682,33 @@ function renderContent() {
         <button class="btn btn-primary" id="btnEditContent">✎ ${getText('editContent')}</button>
       </div>
     </div>
-    <div class="page-meta">${getText('lastUpdated')}</div>
+    <div class="page-meta">${formatLastUpdated(node)}</div>
     <div class="doc-layout">
       <div class="doc-main">
         <div class="markdown-body" id="pageBody"></div>
-        <div class="prev-next-nav">
-          ${previous ? `<a class="pn-link previous" data-page-id="${previous.id}"><span class="pn-label">← ${getText('prev')}</span><span class="pn-title">${escapeHtml(previous.title)}</span></a>` : ''}
-          ${next ? `<a class="pn-link next" data-page-id="${next.id}"><span class="pn-label">${getText('next')} →</span><span class="pn-title">${escapeHtml(next.title)}</span></a>` : ''}
-        </div>
       </div>
       <aside class="doc-toc" id="docToc"></aside>
     </div>
+    <footer class="page-footer">
+      <div class="prev-next-nav">
+        ${previous ? `<a class="pn-link previous" data-page-id="${previous.id}"><span class="pn-label">← ${getText('prev')}</span><span class="pn-title">${escapeHtml(previous.title)}</span></a>` : ''}
+        ${next ? `<a class="pn-link next" data-page-id="${next.id}"><span class="pn-label">${getText('next')} →</span><span class="pn-title">${escapeHtml(next.title)}</span></a>` : ''}
+      </div>
+    </footer>
   `;
 
   const pageBody = document.getElementById('pageBody');
-  const normalizedContent = normalizeLegacyMediaContent(node.content || '');
+  const normalizedContent = removeEphemeralMediaSources(normalizeLegacyMediaContent(node.content || ''));
   if (normalizedContent !== (node.content || '')) {
     node.content = normalizedContent;
+    touchNode(node);
     saveState();
   }
   pageBody.innerHTML = renderMarkdown(normalizedContent);
   enhanceDocumentPage(pageBody);
 
   const titleEl = document.getElementById('pageTitle');
-  const editContentBtn = document.getElementById('btnEditContent');
-  if (editContentBtn) {
-    editContentBtn.addEventListener('click', () => {
-      if (!document.body.classList.contains('edit-mode')) return;
-      renderEditor(node);
-    });
-  }
+  document.getElementById('btnEditContent').addEventListener('click', () => renderEditor(node));
 
   // Inline title editing while in edit mode
   titleEl.addEventListener('blur', () => {
@@ -596,12 +716,187 @@ function renderContent() {
     const newTitle = titleEl.textContent.trim();
     if (newTitle && newTitle !== node.title) {
       node.title = newTitle;
+        touchNode(node);
       saveState();
       renderTree();
     }
   });
 
   applyEditModeToTitle(node);
+}
+
+function sanitizeRenderedHtml(html) {
+  const template = document.createElement('template');
+  template.innerHTML = String(html || '');
+  template.content
+    .querySelectorAll('script, style, iframe, object, embed, form, input, button, textarea, select, link, meta, base, svg, math')
+    .forEach((element) => element.remove());
+
+  template.content.querySelectorAll('*').forEach((element) => {
+    [...element.attributes].forEach((attribute) => {
+      const name = attribute.name.toLowerCase();
+      if (name.startsWith('on') || name === 'style' || name === 'srcdoc') {
+        element.removeAttribute(attribute.name);
+      }
+    });
+
+    ['href', 'src', 'poster'].forEach((attributeName) => {
+      const value = element.getAttribute(attributeName);
+      if (!value) return;
+      const trimmed = value.trim();
+      if (trimmed.startsWith('#')) return;
+      try {
+        const url = new URL(trimmed, window.location.href);
+        const allowedProtocol = ['http:', 'https:', 'mailto:', 'tel:', 'blob:'].includes(url.protocol)
+          || (url.protocol === 'data:' && /^data:image\//i.test(trimmed));
+        if (!allowedProtocol) element.removeAttribute(attributeName);
+      } catch {
+        element.removeAttribute(attributeName);
+      }
+    });
+
+    if (element.tagName === 'A' && element.getAttribute('target') === '_blank') {
+      element.setAttribute('rel', 'noopener noreferrer');
+    }
+  });
+
+  return template.innerHTML;
+}
+
+const CHART_COLORS = ['#2f6fed', '#16a34a', '#f59e0b', '#e5484d', '#8b5cf6', '#0891b2', '#ec4899', '#64748b'];
+
+function formatChartNumber(value) {
+  return Number(value).toLocaleString(undefined, { maximumFractionDigits: 2 });
+}
+
+function shortChartLabel(label, maxLength = 15) {
+  const value = String(label || '');
+  return value.length > maxLength ? `${value.slice(0, maxLength - 1)}…` : value;
+}
+
+function chartPoint(cx, cy, radius, angle) {
+  return {
+    x: cx + Math.cos(angle) * radius,
+    y: cy + Math.sin(angle) * radius
+  };
+}
+
+function chartLegend(chart) {
+  return `<div class="doc-chart-legend">${chart.labels.map((label, index) => `
+    <span class="doc-chart-legend-item"><i style="background:${CHART_COLORS[index % CHART_COLORS.length]}"></i>${escapeHtml(label)}</span>
+  `).join('')}</div>`;
+}
+
+function renderCartesianChart(chart) {
+  const width = 720;
+  const height = 330;
+  const plot = { left: 58, top: 28, width: 630, height: 220 };
+  const max = Math.max(...chart.values, 1);
+  const tickCount = 4;
+  const parts = [];
+  for (let index = 0; index <= tickCount; index += 1) {
+    const value = max * (index / tickCount);
+    const y = plot.top + plot.height - (index / tickCount) * plot.height;
+    parts.push(`<line class="chart-grid-line" x1="${plot.left}" y1="${y}" x2="${plot.left + plot.width}" y2="${y}"></line>`);
+    parts.push(`<text class="chart-axis-label" x="${plot.left - 10}" y="${y + 4}" text-anchor="end">${escapeHtml(formatChartNumber(value))}</text>`);
+  }
+
+  const points = chart.values.map((value, index) => {
+    const x = plot.left + (chart.values.length === 1 ? plot.width / 2 : (index / (chart.values.length - 1)) * plot.width);
+    const y = plot.top + plot.height - (value / max) * plot.height;
+    return { x, y };
+  });
+
+  if (chart.type === 'bar') {
+    const slot = plot.width / chart.values.length;
+    const barWidth = Math.min(56, slot * 0.64);
+    chart.values.forEach((value, index) => {
+      const x = plot.left + slot * index + (slot - barWidth) / 2;
+      const y = plot.top + plot.height - (value / max) * plot.height;
+      const barHeight = plot.top + plot.height - y;
+      parts.push(`<rect class="chart-bar" x="${x}" y="${y}" width="${barWidth}" height="${Math.max(barHeight, 1)}" rx="6" fill="${CHART_COLORS[index % CHART_COLORS.length]}"><title>${escapeHtml(chart.labels[index])}: ${escapeHtml(formatChartNumber(value))}</title></rect>`);
+      parts.push(`<text class="chart-axis-label chart-x-label" x="${x + barWidth / 2}" y="${plot.top + plot.height + 24}" text-anchor="middle">${escapeHtml(shortChartLabel(chart.labels[index]))}</text>`);
+    });
+  } else {
+    parts.push(`<polyline class="chart-line" points="${points.map(point => `${point.x},${point.y}`).join(' ')}"></polyline>`);
+    points.forEach((point, index) => {
+      parts.push(`<circle class="chart-point" cx="${point.x}" cy="${point.y}" r="5" fill="${CHART_COLORS[0]}"><title>${escapeHtml(chart.labels[index])}: ${escapeHtml(formatChartNumber(chart.values[index]))}</title></circle>`);
+      parts.push(`<text class="chart-axis-label chart-x-label" x="${point.x}" y="${plot.top + plot.height + 24}" text-anchor="middle">${escapeHtml(shortChartLabel(chart.labels[index]))}</text>`);
+    });
+  }
+
+  return `<svg class="doc-chart-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeAttribute(chart.title)}">${parts.join('')}</svg>`;
+}
+
+function renderCircularChart(chart) {
+  const width = 720;
+  const height = 300;
+  const cx = 360;
+  const cy = 150;
+  const radius = 108;
+  const fractions = getChartFractions(chart.values);
+  const max = Math.max(...chart.values, 1);
+  let angle = -Math.PI / 2;
+  const parts = [];
+
+  chart.values.forEach((value, index) => {
+    const sweep = chart.type === 'polar' ? (Math.PI * 2) / chart.values.length : fractions[index] * Math.PI * 2;
+    const nextAngle = angle + sweep;
+    const outerRadius = chart.type === 'polar' ? Math.max(8, (value / max) * radius) : radius;
+    const innerRadius = chart.type === 'doughnut' ? 58 : 0;
+    parts.push(`<path class="chart-slice" d="${buildChartArcPath(cx, cy, outerRadius, angle, nextAngle, innerRadius)}" fill="${CHART_COLORS[index % CHART_COLORS.length]}"><title>${escapeHtml(chart.labels[index])}: ${escapeHtml(formatChartNumber(value))}</title></path>`);
+    angle = nextAngle;
+  });
+
+  return `<svg class="doc-chart-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeAttribute(chart.title)}">${parts.join('')}</svg>`;
+}
+
+function renderRadarChart(chart) {
+  const width = 720;
+  const height = 330;
+  const cx = 360;
+  const cy = 160;
+  const radius = 112;
+  const max = Math.max(...chart.values, 1);
+  const angles = chart.labels.map((_, index) => -Math.PI / 2 + (Math.PI * 2 * index) / chart.labels.length);
+  const parts = [];
+  for (let level = 1; level <= 4; level += 1) {
+    const points = angles.map(angle => {
+      const point = chartPoint(cx, cy, radius * (level / 4), angle);
+      return `${point.x},${point.y}`;
+    }).join(' ');
+    parts.push(`<polygon class="chart-radar-grid" points="${points}"></polygon>`);
+  }
+  angles.forEach((angle, index) => {
+    const point = chartPoint(cx, cy, radius, angle);
+    const labelPoint = chartPoint(cx, cy, radius + 22, angle);
+    parts.push(`<line class="chart-radar-axis" x1="${cx}" y1="${cy}" x2="${point.x}" y2="${point.y}"></line>`);
+    parts.push(`<text class="chart-axis-label" x="${labelPoint.x}" y="${labelPoint.y + 4}" text-anchor="middle">${escapeHtml(shortChartLabel(chart.labels[index], 18))}</text>`);
+  });
+  const dataPoints = angles.map((angle, index) => {
+    const point = chartPoint(cx, cy, (chart.values[index] / max) * radius, angle);
+    return `${point.x},${point.y}`;
+  }).join(' ');
+  parts.push(`<polygon class="chart-radar-data" points="${dataPoints}"></polygon>`);
+  angles.forEach((angle, index) => {
+    const point = chartPoint(cx, cy, (chart.values[index] / max) * radius, angle);
+    parts.push(`<circle class="chart-point" cx="${point.x}" cy="${point.y}" r="4" fill="${CHART_COLORS[0]}"></circle>`);
+  });
+  return `<svg class="doc-chart-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeAttribute(chart.title)}">${parts.join('')}</svg>`;
+}
+
+function renderChartMarkup(source) {
+  const result = parseChartDefinition(source);
+  if (!result.ok) {
+    return `<div class="doc-chart chart-error"><strong>Chart tidak dapat dipaparkan</strong><span>${escapeHtml(result.error)}</span></div>`;
+  }
+  const chart = result.chart;
+  const svg = ['bar', 'line'].includes(chart.type)
+    ? renderCartesianChart(chart)
+    : chart.type === 'radar'
+      ? renderRadarChart(chart)
+      : renderCircularChart(chart);
+  return `<figure class="doc-chart" data-chart-type="${escapeAttribute(chart.type)}"><figcaption>${escapeHtml(chart.title)}</figcaption>${svg}${chartLegend(chart)}</figure>`;
 }
 
 function renderMarkdown(text) {
@@ -653,42 +948,17 @@ function renderMarkdown(text) {
     return `${prefix}<div class="callout callout-${variant}"><div class="callout-header"><span class="callout-icon">${iconMap[variant] || 'ℹ️'}</span><span>${labelMap[variant] || 'Info'}</span></div><div class="callout-body">${html}</div></div>`;
   });
 
-  const galleryNormalized = (() => {
-    const source = String(normalized || '');
-    const images = parseMarkdownImages(source);
-    if (!images.length) return source;
-
-    let output = '';
-    let cursor = 0;
-    let index = 0;
-
-    while (index < images.length) {
-      const current = images[index];
-      const group = [current];
-      let groupEnd = current.end;
-      let nextIndex = index + 1;
-
-      while (nextIndex < images.length) {
-        const next = images[nextIndex];
-        const gap = source.slice(groupEnd, next.start);
-        if (gap.trim() !== '') break;
-        group.push(next);
-        groupEnd = next.end;
-        nextIndex += 1;
-      }
-
-      const groupStart = current.start;
-      output += source.slice(cursor, groupStart);
-      output += markdownImagesToGalleryMarkup(source.slice(groupStart, groupEnd));
-      cursor = groupEnd;
-      index = nextIndex;
-    }
-
-    output += source.slice(cursor);
-    return output;
-  })();
-
-  return marked.parse(galleryNormalized);
+  const chartMarkup = [];
+  const chartTokenized = normalized.replace(/(^|\n)```chart[ \t]*\n([\s\S]*?)\n```(?=\n|$)/gi, (match, prefix, source) => {
+    const token = `DOCBOOK_CHART_TOKEN_${chartMarkup.length}`;
+    chartMarkup.push({ token, html: renderChartMarkup(source) });
+    return `${prefix}\n${token}\n`;
+  });
+  let html = sanitizeRenderedHtml(marked.parse(groupConsecutiveMarkdownImages(chartTokenized)));
+  chartMarkup.forEach(({ token, html: chartHtml }) => {
+    html = html.split(`<p>${token}</p>`).join(chartHtml);
+  });
+  return html;
 }
 
 function enhanceDocumentPage(pageBody) {
@@ -732,7 +1002,7 @@ function enhanceDocumentPage(pageBody) {
       saveState();
       renderTree();
       renderContent();
-      window.scrollTo({ top: 0, behavior: 'smooth' });
+      contentEl.scrollTo({ top: 0, behavior: 'smooth' });
     });
   });
 }
@@ -742,6 +1012,34 @@ function applyEditModeToTitle(node) {
   if (!titleEl) return;
   const editing = document.body.classList.contains('edit-mode');
   titleEl.contentEditable = editing ? 'true' : 'false';
+}
+
+function formatLastUpdated(node) {
+  const rawTimestamp = typeof node?.updatedAt === 'number'
+    ? node.updatedAt
+    : Date.parse(node?.updatedAt || '');
+  const timestamp = Number.isFinite(rawTimestamp) ? rawTimestamp : Date.now();
+  const elapsed = Math.max(0, Date.now() - timestamp);
+  const minute = 60 * 1000;
+  const hour = 60 * minute;
+  const day = 24 * hour;
+
+  if (elapsed < minute) return getText('lastUpdatedJustNow');
+  if (elapsed < hour) {
+    return getText('lastUpdatedMinutes').replace('{count}', String(Math.floor(elapsed / minute)));
+  }
+  if (elapsed < day) {
+    return getText('lastUpdatedHours').replace('{count}', String(Math.floor(elapsed / hour)));
+  }
+  if (elapsed < 365 * day) {
+    return getText('lastUpdatedDays').replace('{count}', String(Math.floor(elapsed / day)));
+  }
+
+  const date = new Date(timestamp);
+  const dateLabel = [date.getDate(), date.getMonth() + 1, date.getFullYear()]
+    .map((part) => String(part).padStart(2, '0'))
+    .join('/');
+  return getText('lastUpdatedDate').replace('{date}', dateLabel);
 }
 
 function escapeAttribute(value) {
@@ -785,41 +1083,138 @@ function normalizeLegacyMediaContent(text) {
   });
 }
 
+function removeEphemeralMediaSources(text) {
+  const source = String(text || '');
+  const ephemeralImages = parseMarkdownImages(source)
+    .filter((image) => /^blob:/i.test(image.src));
+  let cleaned = source;
+
+  [...ephemeralImages].reverse().forEach((image) => {
+    const lineStart = source.lastIndexOf('\n', image.start - 1) + 1;
+    const nextLineBreak = source.indexOf('\n', image.end);
+    const lineEnd = nextLineBreak === -1 ? source.length : nextLineBreak;
+    const lineContent = source.slice(lineStart, lineEnd).trim();
+    const imageContent = source.slice(image.start, image.end).trim();
+    const removeStart = lineContent === imageContent ? lineStart : image.start;
+    const removeEnd = lineContent === imageContent
+      ? (nextLineBreak === -1 ? source.length : nextLineBreak + 1)
+      : image.end;
+    cleaned = `${cleaned.slice(0, removeStart)}${cleaned.slice(removeEnd)}`;
+  });
+
+  return cleaned;
+}
+
 function buildMediaGalleryMarkup(items) {
-  const isCollapsed = items.length > 4;
-  const visibleItems = items.slice(0, 4);
+  const hiddenCount = Math.max(0, items.length - 3);
+  const columnCount = Math.min(items.length, 3);
 
   const galleryHtml = `
-    <div class="media-gallery ${isCollapsed ? 'is-collapsed' : ''}" data-gallery-limit="4">
-      ${items.map(item => {
+    <div class="media-gallery media-gallery-${columnCount}" data-gallery-limit="3">
+      ${items.map((item, index) => {
         const src = escapeAttribute(item.src);
-        const label = escapeAttribute(item.title || 'Media');
+        const label = escapeAttribute(item.caption || item.title || 'Media');
+        const moreOverlay = index === 2 && hiddenCount
+          ? `<span class="media-more-overlay">+${hiddenCount} more</span>`
+          : '';
 
         if (item.type === 'video') {
+          const captionHtml = item.caption
+            ? `<p>${escapeHtml(item.caption)}</p>`
+            : '';
           return `
-            <a href='${src}' class='media-item' data-media-type='video'>
+            <a href='${src}' class='media-item' data-media-type='video' data-sub-html='${escapeAttribute(captionHtml)}' aria-label='${label}'>
               <video controls preload='metadata' src='${src}'></video>
               <span class='media-badge'>Video</span>
+              ${moreOverlay}
             </a>
           `.replace(/\n\s+/g, ' ');
         }
 
+        const captionHtml = item.caption
+          ? `<p>${escapeHtml(item.caption)}</p>`
+          : '';
         return `
-          <a href='${src}' class='media-item' data-media-type='image'>
+          <a href='${src}' class='media-item' data-media-type='image' data-sub-html='${escapeAttribute(captionHtml)}' aria-label='${label}'>
             <img src='${src}' alt='${label}' />
+            ${moreOverlay}
           </a>
         `.replace(/\n\s+/g, ' ');
       }).join('')}
     </div>
-    ${isCollapsed ? `<button class="media-gallery-toggle" type="button">${getText('seeMore')}</button>` : ''}
   `;
 
   return galleryHtml.trim();
 }
 
+function groupConsecutiveMarkdownImages(text) {
+  const source = String(text || '');
+  const images = parseMarkdownImages(source);
+
+  const fencedCodeRanges = [];
+  let openFence = null;
+  let offset = 0;
+  source.split('\n').forEach((line) => {
+    const marker = line.match(/^ {0,3}(`{3,}|~{3,})/);
+    if (marker) {
+      const token = marker[1];
+      if (!openFence) {
+        openFence = { character: token[0], length: token.length, start: offset };
+      } else if (token[0] === openFence.character && token.length >= openFence.length) {
+        fencedCodeRanges.push({ start: openFence.start, end: offset + line.length });
+        openFence = null;
+      }
+    }
+    offset += line.length + 1;
+  });
+  if (openFence) fencedCodeRanges.push({ start: openFence.start, end: source.length });
+  const isInsideFencedCode = (position) => fencedCodeRanges.some(
+    (range) => position >= range.start && position <= range.end
+  );
+
+  const isOwnLine = (image) => {
+    if (isInsideFencedCode(image.start)) return false;
+    const lineStart = source.lastIndexOf('\n', image.start - 1) + 1;
+    const lineBreak = source.indexOf('\n', image.end);
+    const lineEnd = lineBreak === -1 ? source.length : lineBreak;
+    return !source.slice(lineStart, image.start).trim()
+      && !source.slice(image.end, lineEnd).trim();
+  };
+
+  const groups = [];
+  let current = [];
+  images.forEach((image) => {
+    const previous = current[current.length - 1];
+    const separatedOnlyByWhitespace = previous
+      && /^\s*$/.test(source.slice(previous.end, image.start));
+    if (isOwnLine(image) && (!previous || separatedOnlyByWhitespace)) {
+      current.push(image);
+      return;
+    }
+    if (current.length > 0) groups.push(current);
+    current = isOwnLine(image) ? [image] : [];
+  });
+  if (current.length > 0) groups.push(current);
+  if (!groups.length) return source;
+
+  let cursor = 0;
+  let output = '';
+  groups.forEach((group) => {
+    output += source.slice(cursor, group[0].start);
+    output += `\n${buildMediaGalleryMarkup(group.map((image) => ({
+      type: 'image',
+      src: image.src,
+      caption: image.caption,
+      title: image.title
+    })))}\n`;
+    cursor = group[group.length - 1].end;
+  });
+  return output + source.slice(cursor);
+}
+
 function initMediaGallery(pageBody) {
   const galleries = pageBody.querySelectorAll('.media-gallery');
-  const galleryFn = window.lightGallery || window.Lightgallery;
+  const galleryFn = window.Lightgallery || window.lightGallery;
   if (!galleryFn || !galleries.length) return;
 
   galleries.forEach((gallery) => {
@@ -827,34 +1222,39 @@ function initMediaGallery(pageBody) {
     gallery.dataset.lgInitialized = 'true';
     try {
       galleryFn(gallery, {
-        selector: 'a',
+        selector: '.media-item',
         download: false,
         thumbnail: true,
+        animateThumb: true,
+        showThumbByDefault: true,
+        toggleThumb: true,
         zoom: true,
+        scale: 1,
+        actualSize: true,
         fullScreen: true,
-        autoplayVideoOnSlide: true,
+        autoplayVideoOnSlide: false,
+        autoplayControls: false,
+        share: false,
+        mousewheel: true,
+        enableDrag: true,
+        enableSwipe: true,
+        swipeThreshold: 50,
         hideControlOnEnd: false,
         loop: false,
-        closable: true
+        closable: true,
+        getCaptionFromTitleOrAlt: false,
+        subHtmlSelectorRelative: true,
+        mobileSettings: {
+          controls: true,
+          showCloseIcon: true,
+          download: false
+        }
       });
     } catch (error) {
       console.warn('Unable to initialize LightGallery', error);
     }
   });
 
-  const toggles = pageBody.querySelectorAll('.media-gallery-toggle');
-  toggles.forEach((toggle) => {
-    toggle.addEventListener('click', () => {
-      const gallery = toggle.previousElementSibling;
-      if (!gallery) return;
-      const expanded = gallery.classList.toggle('is-expanded');
-      const hiddenItems = gallery.querySelectorAll('.media-item:nth-child(n + 5)');
-      hiddenItems.forEach((item) => {
-        item.style.display = expanded ? 'block' : 'none';
-      });
-      toggle.textContent = expanded ? getText('seeLess') : getText('seeMore');
-    });
-  });
 }
 
 function parseEditorImages(text) {
@@ -903,13 +1303,81 @@ function readFileAsDataUrl(file) {
   });
 }
 
-async function uploadImageDataUrlToImgBB(dataUrl) {
-  const response = await fetch('/api/imgbb-upload', {
+function requestUploadPassword() {
+  return new Promise((resolve) => {
+    const backdrop = document.createElement('div');
+    backdrop.className = 'modal-backdrop';
+    backdrop.innerHTML = `
+      <div class="modal" role="dialog" aria-modal="true" aria-labelledby="uploadPasswordTitle">
+        <h3 id="uploadPasswordTitle">${getText('uploadPasswordTitle')}</h3>
+        <input type="password" id="uploadPasswordInput" placeholder="${escapeAttribute(getText('uploadPasswordPlaceholder'))}" autocomplete="current-password">
+        <div class="modal-actions">
+          <button class="btn btn-ghost" id="uploadPasswordCancel">${getText('cancel')}</button>
+          <button class="btn btn-primary" id="uploadPasswordConfirm">${getText('ok')}</button>
+        </div>
+      </div>`;
+    document.body.appendChild(backdrop);
+    const input = backdrop.querySelector('#uploadPasswordInput');
+    let settled = false;
+    const finish = (value) => {
+      if (settled) return;
+      settled = true;
+      backdrop.remove();
+      resolve(value);
+    };
+    backdrop.querySelector('#uploadPasswordCancel').addEventListener('click', () => finish(''));
+    backdrop.querySelector('#uploadPasswordConfirm').addEventListener('click', () => finish(input.value));
+    backdrop.addEventListener('click', (event) => {
+      if (event.target === backdrop) finish('');
+    });
+    input.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') finish(input.value);
+      if (event.key === 'Escape') finish('');
+    });
+    input.focus();
+  });
+}
+
+let uploadAuthenticationPromise = null;
+
+async function authenticateImgBBUpload() {
+  if (!uploadAuthenticationPromise) {
+    uploadAuthenticationPromise = (async () => {
+      const password = await requestUploadPassword();
+      if (!password) throw new Error(getText('uploadCancelled'));
+      const response = await fetch('/api/imgbb-upload-session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password })
+      });
+      const result = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(result?.error || 'Upload authorization failed');
+    })();
+  }
+
+  try {
+    await uploadAuthenticationPromise;
+  } finally {
+    uploadAuthenticationPromise = null;
+  }
+}
+
+async function sendImageToImgBB(dataUrl) {
+  return fetch('/api/imgbb-upload', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ image: dataUrl })
   });
-  const result = await response.json().catch(() => null);
+}
+
+async function uploadImageDataUrlToImgBB(dataUrl) {
+  let response = await sendImageToImgBB(dataUrl);
+  let result = await response.json().catch(() => null);
+  if (response.status === 401 && result?.code === 'UPLOAD_AUTH_REQUIRED') {
+    await authenticateImgBBUpload();
+    response = await sendImageToImgBB(dataUrl);
+    result = await response.json().catch(() => null);
+  }
   if (!response.ok || !result?.url) {
     throw new Error(result?.error || 'ImgBB upload failed');
   }
@@ -958,39 +1426,181 @@ function setMediaStatus(message, isError = false) {
   status.classList.toggle('is-error', isError);
 }
 
-async function handleMediaUpload(files, textarea) {
+async function handleMediaUpload(files, textarea, captionOverride = '') {
   const selectedFiles = [...(files || [])];
   const imageFiles = selectedFiles.filter(file => file.type.startsWith('image/'));
-  const videoFiles = selectedFiles.filter(file => file.type.startsWith('video/'));
-  if (!imageFiles.length && !videoFiles.length) {
+  if (!imageFiles.length) {
     setMediaStatus(getText('invalidImageFile'), true);
-    return;
+    return false;
   }
 
   try {
     if (imageFiles.length) setMediaStatus(getText('uploadingImage'));
-    const imageSnippets = await Promise.all(imageFiles.map(async (file) => {
+    const imageSnippets = [];
+    for (const file of imageFiles) {
       const src = await uploadImageToImgBB(file);
-      return `![${safeMarkdownCaption(imageCaptionFromFilename(file.name))}](${src})`;
-    }));
-    const videoItems = videoFiles.map((file) => ({
-      type: 'video',
-      src: URL.createObjectURL(file),
-      title: file.name,
-      mimeType: file.type
-    }));
-    const videoMarkup = videoItems.length ? buildMediaGalleryMarkup(videoItems).trim() : '';
-    const snippets = [
-      imageSnippets.join('\n'),
-      videoMarkup
-    ].filter(Boolean);
-
-    insertTextAtSelection(textarea, `\n${snippets.join('\n')}\n`);
+      const caption = captionOverride || imageCaptionFromFilename(file.name);
+      imageSnippets.push(`![${safeMarkdownCaption(caption)}](${src})`);
+    }
+    insertTextAtSelection(textarea, `\n${imageSnippets.join('\n')}\n`);
     setMediaStatus(getText('imageReady'));
+    return true;
   } catch (error) {
     console.warn('Unable to upload image to ImgBB', error);
     setMediaStatus(error.message || getText('invalidImageFile'), true);
+    return false;
   }
+}
+
+function openMediaUploadModal(textarea) {
+  const existing = document.querySelector('.media-upload-backdrop');
+  if (existing) existing.remove();
+
+  const backdrop = document.createElement('div');
+  backdrop.className = 'modal-backdrop media-upload-backdrop';
+  backdrop.innerHTML = `
+    <div class="modal media-upload-modal" role="dialog" aria-modal="true" aria-labelledby="mediaUploadTitle">
+      <div class="media-edit-heading">
+        <div>
+          <p class="media-edit-eyebrow">${getText('mediaManager')}</p>
+          <h3 id="mediaUploadTitle">${getText('uploadMediaTitle')}</h3>
+        </div>
+        <button type="button" class="icon-btn media-upload-close" aria-label="${getText('close')}">×</button>
+      </div>
+      <p class="media-upload-hint">${getText('uploadMediaHint')}</p>
+      <div class="media-modal-tabs" role="tablist" aria-label="${getText('mediaManager')}">
+        <button type="button" class="media-modal-tab is-active" id="mediaUploadTab" role="tab" aria-selected="true" aria-controls="mediaUploadPane">${getText('uploadTab')}</button>
+        <button type="button" class="media-modal-tab" id="mediaListTab" role="tab" aria-selected="false" aria-controls="mediaListPane">${getText('imageListTab')}</button>
+      </div>
+      <section id="mediaUploadPane" class="media-modal-pane" role="tabpanel" aria-labelledby="mediaUploadTab">
+        <div class="media-upload-preview" id="mediaUploadPreview" hidden></div>
+        <div class="media-upload-file-row">
+          <button type="button" class="btn btn-ghost" id="chooseMediaUploadFile">📁 ${getText('selectFile')}</button>
+          <span class="media-file-status" id="mediaUploadFileStatus">${getText('noFileSelected')}</span>
+          <input type="file" id="mediaUploadFileInput" accept="image/*" hidden>
+        </div>
+        <div class="media-upload-or"><span>${getText('or')}</span></div>
+        <label class="media-field-label" for="mediaUploadUrl">${getText('imageUrl')}</label>
+        <input id="mediaUploadUrl" type="url" placeholder="${escapeAttribute(getText('imageUrlPlaceholder'))}">
+        <label class="media-field-label" for="mediaUploadCaption">${getText('imageName')}</label>
+        <input id="mediaUploadCaption" type="text" placeholder="${escapeAttribute(getText('imageNamePlaceholder'))}">
+        <p class="media-status" id="mediaStatus" aria-live="polite"></p>
+      </section>
+      <section id="mediaListPane" class="media-modal-pane" role="tabpanel" aria-labelledby="mediaListTab" hidden>
+        <div class="media-modal-list-heading">${getText('mediaManager')}</div>
+        <div class="media-list media-modal-list" id="mediaList"></div>
+      </section>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-ghost" id="mediaUploadCancel">${getText('cancel')}</button>
+        <button type="button" class="btn btn-primary" id="mediaUploadSubmit">📤 ${getText('upload')}</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(backdrop);
+
+  const fileInput = backdrop.querySelector('#mediaUploadFileInput');
+  const chooseButton = backdrop.querySelector('#chooseMediaUploadFile');
+  const fileStatus = backdrop.querySelector('#mediaUploadFileStatus');
+  const preview = backdrop.querySelector('#mediaUploadPreview');
+  const captionInput = backdrop.querySelector('#mediaUploadCaption');
+  const urlInput = backdrop.querySelector('#mediaUploadUrl');
+  const status = backdrop.querySelector('#mediaStatus');
+  const submitButton = backdrop.querySelector('#mediaUploadSubmit');
+  const uploadTab = backdrop.querySelector('#mediaUploadTab');
+  const listTab = backdrop.querySelector('#mediaListTab');
+  const uploadPane = backdrop.querySelector('#mediaUploadPane');
+  const listPane = backdrop.querySelector('#mediaListPane');
+  let selectedFile = null;
+  let previewUrl = '';
+
+  const close = () => {
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    backdrop.remove();
+  };
+  backdrop.querySelector('.media-upload-close').addEventListener('click', close);
+  backdrop.querySelector('#mediaUploadCancel').addEventListener('click', close);
+  backdrop.addEventListener('click', (event) => {
+    if (event.target === backdrop) close();
+  });
+  const setActiveTab = (tab) => {
+    const showList = tab === 'list';
+    uploadTab.classList.toggle('is-active', !showList);
+    listTab.classList.toggle('is-active', showList);
+    uploadTab.setAttribute('aria-selected', String(!showList));
+    listTab.setAttribute('aria-selected', String(showList));
+    uploadPane.hidden = showList;
+    listPane.hidden = !showList;
+    submitButton.hidden = showList;
+  };
+  uploadTab.addEventListener('click', () => setActiveTab('upload'));
+  listTab.addEventListener('click', () => setActiveTab('list'));
+  renderMediaManager(textarea);
+  chooseButton.addEventListener('click', () => fileInput.click());
+  fileInput.addEventListener('change', () => {
+    selectedFile = fileInput.files[0] || null;
+    urlInput.value = '';
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    previewUrl = '';
+    preview.innerHTML = '';
+    preview.hidden = true;
+    status.textContent = '';
+    if (!selectedFile) {
+      fileStatus.textContent = getText('noFileSelected');
+      return;
+    }
+
+    fileStatus.textContent = `${getText('fileSelected')}: ${selectedFile.name}`;
+    previewUrl = URL.createObjectURL(selectedFile);
+    if (selectedFile.type.startsWith('image/')) {
+      preview.innerHTML = `<img src="${escapeAttribute(previewUrl)}" alt="${escapeAttribute(selectedFile.name)}">`;
+    }
+    preview.hidden = false;
+    if (!captionInput.value.trim() && selectedFile.type.startsWith('image/')) {
+      captionInput.value = imageCaptionFromFilename(selectedFile.name);
+    }
+  });
+  urlInput.addEventListener('input', () => {
+    if (!urlInput.value.trim()) return;
+    selectedFile = null;
+    fileInput.value = '';
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    previewUrl = '';
+    preview.innerHTML = '';
+    preview.hidden = true;
+    fileStatus.textContent = getText('noFileSelected');
+  });
+  submitButton.addEventListener('click', async () => {
+    const imageUrl = urlInput.value.trim();
+    if (!selectedFile && !imageUrl) {
+      status.textContent = getText('noMediaSelected');
+      return;
+    }
+    submitButton.disabled = true;
+    chooseButton.disabled = true;
+    if (imageUrl) {
+      if (!isValidImageSource(imageUrl)) {
+        status.textContent = getText('invalidImageUrl');
+        submitButton.disabled = false;
+        chooseButton.disabled = false;
+        return;
+      }
+      const caption = captionInput.value.trim() || getText('defaultImageCaption');
+      insertTextAtSelection(textarea, `\n![${safeMarkdownCaption(caption)}](${imageUrl})\n`);
+      close();
+      return;
+    }
+    status.textContent = getText('uploadingImage');
+    const uploaded = await handleMediaUpload([selectedFile], textarea, captionInput.value.trim());
+    if (uploaded) {
+      close();
+      return;
+    }
+    status.textContent = document.getElementById('mediaStatus')?.textContent || getText('invalidImageFile');
+    submitButton.disabled = false;
+    chooseButton.disabled = false;
+  });
+
+  captionInput.focus();
 }
 
 function renderMediaManager(textarea) {
@@ -1054,7 +1664,7 @@ function openMediaEditDialog(textarea, media) {
       <div class="modal-actions media-edit-actions">
         <button type="button" class="btn btn-danger" id="deleteMediaButton">${getText('deleteImage')}</button>
         <div>
-          <button type="button" class="btn btn-danger" id="mediaEditCancel">${getText('cancel')}</button>
+          <button type="button" class="btn btn-ghost" id="mediaEditCancel">${getText('cancel')}</button>
           <button type="button" class="btn btn-primary" id="mediaEditSave">${getText('save')}</button>
         </div>
       </div>
@@ -1138,218 +1748,232 @@ function openMediaEditDialog(textarea, media) {
   captionInput.select();
 }
 
-function openMediaUploadModal(textarea) {
+function openChartBuilderModal(textarea) {
+  document.querySelector('.chart-builder-backdrop')?.remove();
+
   const backdrop = document.createElement('div');
-  backdrop.className = 'modal-backdrop media-upload-backdrop';
+  backdrop.className = 'modal-backdrop chart-builder-backdrop';
   backdrop.innerHTML = `
-    <div class="modal media-upload-modal" role="dialog" aria-modal="true" aria-labelledby="mediaUploadTitle">
+    <div class="modal chart-builder-modal" role="dialog" aria-modal="true" aria-labelledby="chartBuilderTitle">
       <div class="media-edit-heading">
         <div>
-          <p class="media-edit-eyebrow">${getText('mediaManager')}</p>
-          <h3 id="mediaUploadTitle">${getText('mediaManager')}</h3>
+          <p class="media-edit-eyebrow">${getText('chart')}</p>
+          <h3 id="chartBuilderTitle">${getText('insertChart')}</h3>
         </div>
-        <button type="button" class="icon-btn media-edit-close" aria-label="${getText('close')}">×</button>
+        <button type="button" class="icon-btn chart-builder-close" aria-label="${getText('close')}">×</button>
       </div>
-
-      <div class="media-modal-tabs" role="tablist" aria-label="Media tabs">
-        <button type="button" class="media-modal-tab is-active" data-media-tab="upload" role="tab" aria-selected="true">Upload</button>
-        <button type="button" class="media-modal-tab" data-media-tab="list" role="tab" aria-selected="false">Gambar</button>
-      </div>
-
-      <div class="media-modal-pane is-active" data-media-pane="upload" role="tabpanel">
-        <p class="media-manager-note">${getText('mediaManagerHint')}</p>
-
-        <label class="media-field-label" for="mediaUploadUrlInput">${getText('imageUrl')}</label>
-        <input id="mediaUploadUrlInput" type="url" placeholder="${escapeAttribute(getText('imageUrlPlaceholder'))}">
-
-        <label class="media-field-label" for="mediaUploadNameInput">${getText('imageName')}</label>
-        <input id="mediaUploadNameInput" type="text" placeholder="${escapeAttribute(getText('imageNamePlaceholder'))}">
-
-        <div class="media-replace-actions media-modal-actions">
-          <button type="button" class="btn btn-primary" id="mediaUploadInsert">＋ ${getText('insertImage')}</button>
-          <button type="button" class="btn btn-ghost" id="chooseUploadFileBtn">📷 ${getText('uploadMedia')}</button>
-          <input type="file" id="uploadModalFileInput" accept="image/*,video/*" multiple hidden>
+      <p class="chart-builder-hint">${getText('chartBuilderHint')}</p>
+      <div class="chart-builder-fields">
+        <div class="chart-builder-field">
+          <label for="chartTitleInput">${getText('chartTitle')}</label>
+          <input id="chartTitleInput" type="text" maxlength="120" value="Chart">
+        </div>
+        <div class="chart-builder-field">
+          <label for="chartTypeInput">${getText('chartType')}</label>
+          <select id="chartTypeInput">
+            <option value="bar">${getText('chartBar')}</option>
+            <option value="line">${getText('chartLine')}</option>
+            <option value="pie">${getText('chartPie')}</option>
+            <option value="doughnut">${getText('chartDoughnut')}</option>
+            <option value="polar">${getText('chartPolar')}</option>
+            <option value="radar">${getText('chartRadar')}</option>
+          </select>
         </div>
       </div>
-
-      <div class="media-modal-pane" data-media-pane="list" role="tabpanel" hidden>
-        <div class="media-list media-list-modal" id="mediaUploadList"></div>
-      </div>
-
-      <p class="media-edit-status" id="mediaUploadStatus"></p>
-      <div class="modal-actions media-edit-actions">
-        <div></div>
+      <div class="chart-builder-data-heading">
         <div>
-          <button type="button" class="btn btn-danger" id="mediaUploadCancel">${getText('cancel')}</button>
+          <span class="media-edit-eyebrow">${getText('chartData')}</span>
+          <span class="chart-builder-data-copy">${getText('chartLabel')} / ${getText('chartValue')}</span>
         </div>
+        <button type="button" class="btn btn-ghost chart-add-row" id="chartAddRow">+ ${getText('addData')}</button>
+      </div>
+      <div class="chart-data-table">
+        <div class="chart-data-header">
+          <span>${getText('chartLabel')}</span>
+          <span>${getText('chartValue')}</span>
+          <span aria-hidden="true"></span>
+        </div>
+        <div id="chartDataRows"></div>
+      </div>
+      <div class="chart-builder-preview-heading">${getText('chartPreview')}</div>
+      <div id="chartBuilderPreview" class="chart-builder-preview"></div>
+      <p id="chartBuilderStatus" class="chart-builder-status" aria-live="polite"></p>
+      <div class="modal-actions chart-builder-actions">
+        <button type="button" class="btn btn-ghost" id="chartBuilderCancel">${getText('cancel')}</button>
+        <button type="button" class="btn btn-primary" id="chartBuilderInsert">📊 ${getText('insertChart')}</button>
       </div>
     </div>
   `;
-
   document.body.appendChild(backdrop);
-  const close = () => backdrop.remove();
-  const urlInput = backdrop.querySelector('#mediaUploadUrlInput');
-  const nameInput = backdrop.querySelector('#mediaUploadNameInput');
-  const fileInput = backdrop.querySelector('#uploadModalFileInput');
-  const status = backdrop.querySelector('#mediaUploadStatus');
-  const chooseFileBtn = backdrop.querySelector('#chooseUploadFileBtn');
-  const insertBtn = backdrop.querySelector('#mediaUploadInsert');
-  const list = backdrop.querySelector('#mediaUploadList');
-  const tabs = backdrop.querySelectorAll('.media-modal-tab');
-  const panes = backdrop.querySelectorAll('.media-modal-pane');
 
-  const renderListPane = () => {
-    const existingImages = parseEditorImages(textarea.value);
-    if (existingImages.length) {
-      list.innerHTML = existingImages.map((media) => `
-        <div class="media-row media-row-modal" data-media-id="${media.id}">
-          <div class="media-thumb">
-            <img src="${escapeAttribute(media.src)}" alt="${escapeAttribute(media.caption || getText('imageName'))}">
-          </div>
-          <div class="media-row-details">
-            <input class="media-name-input" type="text" value="${escapeAttribute(media.caption)}" placeholder="${escapeAttribute(getText('imageNamePlaceholder'))}" aria-label="${escapeAttribute(getText('imageName'))}">
-            <span class="media-source" title="${escapeAttribute(media.src)}">${escapeHtml(media.src)}</span>
-          </div>
-          <button type="button" class="btn btn-ghost media-edit-button">${getText('editImage')}</button>
-        </div>
-      `).join('');
+  const titleInput = backdrop.querySelector('#chartTitleInput');
+  const typeInput = backdrop.querySelector('#chartTypeInput');
+  const rowsContainer = backdrop.querySelector('#chartDataRows');
+  const addRowButton = backdrop.querySelector('#chartAddRow');
+  const preview = backdrop.querySelector('#chartBuilderPreview');
+  const status = backdrop.querySelector('#chartBuilderStatus');
+  const insertButton = backdrop.querySelector('#chartBuilderInsert');
+  let rows = [
+    { label: 'Kategori A', value: '40' },
+    { label: 'Kategori B', value: '30' },
+    { label: 'Kategori C', value: '20' }
+  ];
 
-      list.querySelectorAll('.media-row').forEach((row, index) => {
-        const media = existingImages[index];
-        row.querySelector('.media-name-input').addEventListener('change', (event) => {
-          replaceEditorImage(textarea, media, media.src, event.target.value);
-          setMediaStatus(getText('imageUpdated'));
-          renderListPane();
-        });
-        row.querySelector('.media-edit-button').addEventListener('click', () => {
-          openMediaEditDialog(textarea, media);
-        });
-      });
-    } else {
-      list.innerHTML = `<p class="media-empty">${getText('noImages')}</p>`;
-    }
+  const handleEscape = event => {
+    if (event.key === 'Escape') close();
   };
-
-  tabs.forEach((tab) => {
-    tab.addEventListener('click', () => {
-      const target = tab.dataset.mediaTab;
-      tabs.forEach((item) => {
-        const active = item === tab;
-        item.classList.toggle('is-active', active);
-        item.setAttribute('aria-selected', active ? 'true' : 'false');
-      });
-      panes.forEach((pane) => {
-        const active = pane.dataset.mediaPane === target;
-        pane.classList.toggle('is-active', active);
-        pane.hidden = !active;
-      });
-      if (target === 'list') renderListPane();
-    });
-  });
-
-  renderListPane();
-
-  backdrop.querySelector('.media-edit-close').addEventListener('click', close);
-  backdrop.querySelector('#mediaUploadCancel').addEventListener('click', close);
-  backdrop.addEventListener('click', (event) => {
+  const close = () => {
+    document.removeEventListener('keydown', handleEscape);
+    backdrop.remove();
+  };
+  backdrop.querySelector('.chart-builder-close').addEventListener('click', close);
+  backdrop.querySelector('#chartBuilderCancel').addEventListener('click', close);
+  backdrop.addEventListener('click', event => {
     if (event.target === backdrop) close();
   });
+  document.addEventListener('keydown', handleEscape);
 
-  chooseFileBtn.addEventListener('click', () => fileInput.click());
-  fileInput.addEventListener('change', async () => {
-    const files = fileInput.files ? [...fileInput.files] : [];
-    if (!files.length) return;
-
-    try {
-      status.textContent = getText('uploadingImage');
-      await handleMediaUpload(files, textarea);
-      renderListPane();
-      tabs.forEach((item) => {
-        const target = item.dataset.mediaTab === 'list';
-        item.classList.toggle('is-active', target);
-        item.setAttribute('aria-selected', target ? 'true' : 'false');
-      });
-      panes.forEach((pane) => {
-        const target = pane.dataset.mediaPane === 'list';
-        pane.classList.toggle('is-active', target);
-        pane.hidden = !target;
-      });
-      close();
-    } catch (error) {
-      status.textContent = error.message || getText('invalidImageFile');
+  const getDefinition = () => {
+    const labels = [...rowsContainer.querySelectorAll('.chart-label-input')].map(input => input.value.trim());
+    const rawValues = [...rowsContainer.querySelectorAll('.chart-value-input')].map(input => input.value.trim());
+    if (labels.some(label => !label) || rawValues.some(value => !value)) {
+      return { ok: false, error: getText('chartNeedData') };
     }
+    return normalizeChartDefinition({
+      title: titleInput.value.trim(),
+      type: typeInput.value,
+      labels,
+      values: rawValues
+    });
+  };
+
+  const updatePreview = () => {
+    const result = getDefinition();
+    insertButton.disabled = !result.ok;
+    if (!result.ok) {
+      preview.innerHTML = `<div class="chart-builder-empty">${escapeHtml(result.error)}</div>`;
+      status.textContent = result.error;
+      status.classList.add('is-error');
+      return;
+    }
+    preview.innerHTML = renderChartMarkup(JSON.stringify(result.chart));
+    status.textContent = '';
+    status.classList.remove('is-error');
+  };
+
+  const syncRowsFromInputs = () => {
+    const labels = [...rowsContainer.querySelectorAll('.chart-label-input')];
+    const values = [...rowsContainer.querySelectorAll('.chart-value-input')];
+    if (labels.length !== rows.length || values.length !== rows.length) return;
+    rows = rows.map((row, index) => ({
+      label: labels[index].value,
+      value: values[index].value
+    }));
+  };
+
+  const renderRows = () => {
+    rowsContainer.innerHTML = rows.map((row, index) => `
+      <div class="chart-data-row">
+        <input class="chart-label-input" type="text" value="${escapeAttribute(row.label)}" placeholder="${escapeAttribute(getText('chartLabel'))}" aria-label="${escapeAttribute(getText('chartLabel'))} ${index + 1}">
+        <input class="chart-value-input" type="number" min="0" step="any" value="${escapeAttribute(row.value)}" placeholder="0" aria-label="${escapeAttribute(getText('chartValue'))} ${index + 1}">
+        <button type="button" class="icon-btn chart-remove-row" aria-label="${escapeAttribute(getText('removeData'))}" ${rows.length <= 2 ? 'disabled' : ''}>×</button>
+      </div>
+    `).join('');
+
+    rowsContainer.querySelectorAll('.chart-label-input, .chart-value-input').forEach(input => {
+      input.addEventListener('input', updatePreview);
+    });
+    rowsContainer.querySelectorAll('.chart-remove-row').forEach((button, index) => {
+      button.addEventListener('click', () => {
+        if (rows.length <= 2) return;
+        syncRowsFromInputs();
+        rows.splice(index, 1);
+        renderRows();
+      });
+    });
+    updatePreview();
+  };
+
+  titleInput.addEventListener('input', updatePreview);
+  typeInput.addEventListener('change', updatePreview);
+  addRowButton.addEventListener('click', () => {
+    if (rows.length >= 12) return;
+    syncRowsFromInputs();
+    rows.push({ label: `Kategori ${String.fromCharCode(65 + rows.length)}`, value: '10' });
+    renderRows();
+    rowsContainer.lastElementChild?.querySelector('.chart-label-input')?.focus();
   });
-
-  insertBtn.addEventListener('click', () => {
-    const url = urlInput.value.trim();
-    if (!url) {
-      status.textContent = getText('invalidImageUrl');
-      urlInput.focus();
-      return;
-    }
-
-    if (!isValidImageSource(url)) {
-      status.textContent = getText('invalidImageUrl');
-      urlInput.focus();
-      return;
-    }
-
-    const caption = nameInput.value.trim() || getText('defaultImageCaption');
-    insertTextAtSelection(textarea, `\n![${safeMarkdownCaption(caption)}](${url})\n`);
-    setMediaStatus(getText('imageReady'));
-    renderListPane();
+  insertButton.addEventListener('click', () => {
+    const result = getDefinition();
+    if (!result.ok) return;
+    insertTextAtSelection(textarea, `\n${serializeChartBlock(result.chart)}\n`);
     close();
   });
 
-  urlInput.focus();
+  renderRows();
+  titleInput.focus();
+  titleInput.select();
 }
 
 function renderEditor(node) {
-  if (!document.body.classList.contains('edit-mode')) {
-    renderContent();
-    return;
-  }
-
-  const originalContent = node.content || '';
-
   contentEl.innerHTML = `
-    <div class="page-header">
-      <h1 class="page-title">${escapeHtml(node.title)}</h1>
+    <div class="editor-page-heading">
+      <div>
+        <span class="editor-page-kicker">${getText('editContent')}</span>
+        <h1 class="page-title">${escapeHtml(node.title)}</h1>
+      </div>
+      <span class="editor-save-state" id="editorSaveState">${getText('editorReady')}</span>
     </div>
     <div class="editor-wrap">
       <div class="editor-panel">
         <div class="editor-header">
           <div class="editor-header-copy">
-            <span class="editor-kicker">Editor</span>
-            <h2>${escapeHtml(node.title)}</h2>
+            <span class="editor-kicker">${getText('markdownSupported')}</span>
+            <p>${getText('editorHint')}</p>
           </div>
-          <span class="editor-status-badge">${getText('markdownSupported')}</span>
+          <div class="editor-header-meta">
+            <span class="editor-status-badge">Markdown</span>
+            <span class="editor-character-count" id="editorCharacterCount">0 ${getText('characters')}</span>
+          </div>
         </div>
 
         <div class="editor-toolbar" role="toolbar" aria-label="Toolbar Markdown">
-          <button class="tb-btn" data-prefix="# " title="${getText('title')}">H</button>
-          <button class="tb-btn" data-prefix="**" data-suffix="**" title="${getText('bold')}"><strong>B</strong></button>
-          <button class="tb-btn" data-prefix="*" data-suffix="*" title="${getText('italic')}"><em>I</em></button>
-          <button class="tb-btn" data-prefix="- " title="${getText('list')}">☷</button>
-          <button class="tb-btn" data-snippet="- [ ] Tugas\n- [ ] Tugas lain\n" title="${getText('checklist')}">☑</button>
-          <button class="tb-btn" data-prefix="[" data-suffix="](url)" title="${getText('link')}">↗</button>
-          <button class="tb-btn" data-prefix="~~~\n" data-suffix="\n~~~" title="${getText('code')}">&lt;/&gt;</button>
-          <button class="tb-btn" data-snippet="| Tajuk | Nilai |\n| --- | --- |\n| Contoh | Data |\n" title="${getText('table')}">▦</button>
-          <span class="tb-sep"></span>
-          <button class="tb-btn" data-callout="tip" title="${getText('tip')}">💡</button>
-          <button class="tb-btn" data-callout="info" title="${getText('info')}">ℹ️</button>
-          <button class="tb-btn" data-callout="note" title="${getText('note')}">📝</button>
-          <button class="tb-btn" data-callout="warn" title="${getText('warning')}">⚠️</button>
-          <button class="tb-btn" data-callout="important" title="${getText('important')}">❗</button>
-          <button class="tb-btn" data-callout="success" title="${getText('success')}">✅</button>
-          <button class="tb-btn" data-callout="danger" title="${getText('danger')}">⛔</button>
-          <button class="tb-btn" data-callout="quote" title="${getText('quote')}">❝</button>
-          <span class="tb-sep"></span>
-          <button class="tb-btn" id="btnUploadMedia" title="${getText('uploadMedia')}">📷</button>
-          <button class="tb-btn" id="btnPreview" title="${getText('preview')}">◉</button>
+          <div class="editor-tool-switcher">
+            <span class="editor-toolbar-label">${getText('editorToolbar')}</span>
+            <button type="button" class="editor-tool-mode" id="editorToolMode" aria-label="${getText('switchToolGroup')}">
+              <span id="editorToolModeLabel">${getText('textTools')}</span>
+              <span aria-hidden="true">⌄</span>
+            </button>
+          </div>
+          <div class="editor-tool-panels">
+            <div class="editor-toolbar-group editor-tool-panel" data-tool-panel="text">
+              <button class="tb-btn" data-prefix="# " title="${getText('title')}">H</button>
+              <button class="tb-btn" data-prefix="**" data-suffix="**" title="${getText('bold')}"><strong>B</strong></button>
+              <button class="tb-btn" data-prefix="*" data-suffix="*" title="${getText('italic')}"><em>I</em></button>
+              <button class="tb-btn" data-prefix="[" data-suffix="](url)" title="${getText('link')}">↗</button>
+              <button class="tb-btn" data-prefix="- " title="${getText('list')}">☷</button>
+              <button class="tb-btn" data-snippet="- [ ] Tugas\n- [ ] Tugas lain\n" title="${getText('checklist')}">☑</button>
+              <button class="tb-btn" data-prefix="~~~\n" data-suffix="\n~~~" title="${getText('code')}">&lt;/&gt;</button>
+              <button class="tb-btn" data-snippet="| Tajuk | Nilai |\n| --- | --- |\n| Contoh | Data |\n" title="${getText('table')}">▦</button>
+            </div>
+            <div class="editor-toolbar-group editor-tool-panel" data-tool-panel="callout" hidden>
+              <button class="tb-btn" data-callout="tip" title="${getText('tip')}">💡</button>
+              <button class="tb-btn" data-callout="info" title="${getText('info')}">ℹ️</button>
+              <button class="tb-btn" data-callout="note" title="${getText('note')}">📝</button>
+              <button class="tb-btn" data-callout="warn" title="${getText('warning')}">⚠️</button>
+              <button class="tb-btn" data-callout="important" title="${getText('important')}">❗</button>
+              <button class="tb-btn" data-callout="success" title="${getText('success')}">✅</button>
+              <button class="tb-btn" data-callout="danger" title="${getText('danger')}">⛔</button>
+              <button class="tb-btn" data-callout="quote" title="${getText('quote')}">❝</button>
+            </div>
+            <div class="editor-toolbar-group editor-tool-panel" data-tool-panel="media" hidden>
+              <button class="tb-btn" id="btnUploadMedia" title="${getText('uploadMedia')}">📷</button>
+              <button class="tb-btn" id="btnInsertChart" title="${getText('insertChart')}">📊</button>
+              <button class="tb-btn" id="btnPreview" title="${getText('preview')}">◉</button>
+            </div>
+          </div>
         </div>
 
-        <input type="file" id="mediaUploadInput" accept="image/*,video/*" multiple hidden>
         <div class="editor-body">
           <textarea class="editor-textarea" id="editorTextarea" spellcheck="false">${escapeHtml(node.content || '')}</textarea>
         </div>
@@ -1365,62 +1989,50 @@ function renderEditor(node) {
     </div>
   `;
   const textarea = document.getElementById('editorTextarea');
-  const mediaInput = document.getElementById('mediaUploadInput');
-  const uploadMediaBtn = document.getElementById('btnUploadMedia');
-  const previewBtn = document.getElementById('btnPreview');
+  const editorStatus = document.getElementById('editorSaveState');
+  const characterCount = document.getElementById('editorCharacterCount');
+  const saveButton = document.getElementById('btnSaveEdit');
+  const initialContent = node.content || '';
+  const updateEditorMeta = () => {
+    const hasChanges = textarea.value !== initialContent;
+    characterCount.textContent = `${textarea.value.length.toLocaleString()} ${getText('characters')}`;
+    editorStatus.textContent = !hasChanges
+      ? getText('editorReady')
+      : getText('editorUnsaved');
+    editorStatus.classList.toggle('is-unsaved', hasChanges);
+    saveButton.disabled = !hasChanges;
+    renderMediaManager(textarea);
+  };
+  textarea.addEventListener('input', updateEditorMeta);
+  updateEditorMeta();
 
-  const askBeforeLeavingEditor = (nextAction) => {
-    const isDirty = hasUnsavedChanges(textarea.value, originalContent);
-    if (!isDirty) {
-      nextAction();
-      return;
-    }
-
-    const confirmBackdrop = document.createElement('div');
-    confirmBackdrop.className = 'modal-backdrop';
-    confirmBackdrop.innerHTML = `
-      <div class="modal" role="dialog" aria-modal="true">
-        <h3>${getText('confirmAction')}</h3>
-        <p style="color:var(--text-muted); font-size:14px; margin-top:-6px;">Perubahan belum disimpan. Simpan dahulu?</p>
-        <div class="modal-actions">
-          <button class="btn btn-ghost" id="unsavedCancel">${getText('cancel')}</button>
-          <button class="btn btn-danger" id="unsavedDiscard">Discard</button>
-          <button class="btn btn-primary" id="unsavedSave">${getText('save')}</button>
-        </div>
-      </div>
-    `;
-    document.body.appendChild(confirmBackdrop);
-    const close = () => confirmBackdrop.remove();
-    confirmBackdrop.querySelector('#unsavedCancel').addEventListener('click', close);
-    confirmBackdrop.querySelector('#unsavedDiscard').addEventListener('click', () => {
-      close();
-      nextAction();
-    });
-    confirmBackdrop.querySelector('#unsavedSave').addEventListener('click', () => {
-      node.content = textarea.value;
-      saveState();
-      close();
-      nextAction();
-    });
-    confirmBackdrop.addEventListener('click', (event) => {
-      if (event.target === confirmBackdrop) close();
+  const toolModes = [
+    { key: 'text', label: 'textTools' },
+    { key: 'callout', label: 'calloutTools' },
+    { key: 'media', label: 'mediaTools' }
+  ];
+  const toolModeButton = document.getElementById('editorToolMode');
+  const toolModeLabel = document.getElementById('editorToolModeLabel');
+  const toolPanels = contentEl.querySelectorAll('.editor-tool-panel');
+  let activeToolMode = 0;
+  const updateToolMode = () => {
+    const mode = toolModes[activeToolMode];
+    toolModeLabel.textContent = getText(mode.label);
+    toolModeButton.dataset.mode = mode.key;
+    toolPanels.forEach((panel) => {
+      panel.hidden = panel.dataset.toolPanel !== mode.key;
     });
   };
+  toolModeButton.addEventListener('click', () => {
+    activeToolMode = (activeToolMode + 1) % toolModes.length;
+    updateToolMode();
+  });
+  updateToolMode();
 
-  renderMediaManager(textarea);
-  textarea.addEventListener('input', () => renderMediaManager(textarea));
-
-  if (uploadMediaBtn) {
-    uploadMediaBtn.addEventListener('click', () => openMediaUploadModal(textarea));
-  }
-
-  if (mediaInput) {
-    mediaInput.addEventListener('change', async () => {
-      await handleMediaUpload(mediaInput.files, textarea);
-      mediaInput.value = '';
-    });
-  }
+  document.getElementById('btnUploadMedia').addEventListener('click', () => openMediaUploadModal(textarea));
+  document.getElementById('btnInsertChart').addEventListener('click', () => openChartBuilderModal(textarea));
   contentEl.querySelectorAll('.tb-btn').forEach(button => {
+    if (!button.dataset.prefix && !button.dataset.snippet && !button.dataset.callout) return;
     button.addEventListener('click', () => {
       const start = textarea.selectionStart;
       const end = textarea.selectionEnd;
@@ -1440,6 +2052,7 @@ function renderEditor(node) {
         }[variant] || 'INFO';
         const replacement = `> [!${label}]\n> ${selected}\n`;
         textarea.setRangeText(replacement, start, end, 'select');
+        updateEditorMeta();
         textarea.focus();
         return;
       }
@@ -1447,56 +2060,48 @@ function renderEditor(node) {
       if (button.dataset.snippet) {
         const replacement = button.dataset.snippet;
         textarea.setRangeText(replacement, start, end, 'select');
+        updateEditorMeta();
         textarea.focus();
         return;
       }
 
       const replacement = `${button.dataset.prefix}${selected}${button.dataset.suffix || ''}`;
       textarea.setRangeText(replacement, start, end, 'select');
+      updateEditorMeta();
       textarea.focus();
     });
   });
-  if (previewBtn) {
-    previewBtn.addEventListener('click', () => {
-      const existingPreview = contentEl.querySelector('.editor-preview');
-      if (existingPreview) {
-        existingPreview.replaceWith(textarea);
-        previewBtn.textContent = '◉';
-        previewBtn.title = getText('preview');
-        return;
-      }
-
-      const preview = document.createElement('div');
-      preview.className = 'markdown-body editor-preview';
-      preview.innerHTML = renderMarkdown(textarea.value);
-      textarea.replaceWith(preview);
-      previewBtn.textContent = '✎';
-      previewBtn.title = getText('backToEditor');
-    });
-  }
-
-  const cancelBtn = document.getElementById('btnCancelEdit');
-  const saveBtn = document.getElementById('btnSaveEdit');
-  cancelBtn?.addEventListener('click', () => askBeforeLeavingEditor(renderContent));
-  saveBtn?.addEventListener('click', () => {
+  const previewButton = document.getElementById('btnPreview');
+  previewButton.addEventListener('click', () => {
+    if (previewButton.dataset.previewing === 'true') {
+      renderEditor(node);
+      return;
+    }
+    const preview = document.createElement('div');
+    preview.className = 'markdown-body editor-preview';
+    preview.innerHTML = renderMarkdown(textarea.value);
+    textarea.replaceWith(preview);
+    initMediaGallery(preview);
+    previewButton.dataset.previewing = 'true';
+    previewButton.textContent = '✎';
+    previewButton.title = getText('backToEditor');
+  });
+  document.getElementById('btnCancelEdit').addEventListener('click', renderContent);
+  const saveEditor = () => {
+    if (textarea.value === initialContent) return;
     node.content = textarea.value;
+    touchNode(node);
     saveState();
     renderContent();
-  });
-}
-
-function ensureEditControlsHiddenWhenDisabled() {
-  const editOnlyEls = document.querySelectorAll('.edit-only');
-  editOnlyEls.forEach((el) => {
-    const shouldShow = document.body.classList.contains('edit-mode');
-    if (shouldShow) {
-      el.style.display = '';
-    } else {
-      el.style.display = 'none';
+  };
+  saveButton.addEventListener('click', saveEditor);
+  textarea.addEventListener('keydown', (event) => {
+    if ((event.ctrlKey || event.metaKey) && event.key === 's') {
+      event.preventDefault();
+      saveEditor();
     }
   });
 }
-
 
 function escapeHtml(str) {
   const div = document.createElement('div');
@@ -1561,8 +2166,9 @@ function getLanguage() {
 
 function updateBrandName() {
   const title = normalizeBookTitle(state.bookTitle);
-  const brandNameEl = document.querySelector('.brand-name');
-  if (brandNameEl) brandNameEl.textContent = title;
+  document.querySelectorAll('.brand-name').forEach((brandNameEl) => {
+    brandNameEl.textContent = title;
+  });
   document.title = `${title} — Modern Documentation`;
   state.bookTitle = title;
 }
@@ -1583,6 +2189,9 @@ function applyLanguage(lang) {
   const settingsBtn = document.getElementById('settingsButton');
   if (settingsBtn) settingsBtn.title = getText('settings');
   settingsBtn?.setAttribute('aria-label', getText('settings'));
+  const shareBtn = document.getElementById('shareButton');
+  if (shareBtn) shareBtn.title = getText('share');
+  shareBtn?.setAttribute('aria-label', getText('share'));
 
   const addRootPageBtn = document.getElementById('addRootPage');
   if (addRootPageBtn) {
@@ -1772,6 +2381,111 @@ function initSettings() {
   btn.addEventListener('click', openSettingsPanel);
 }
 
+let closeSharePopover = null;
+
+function openSharePopover() {
+  closeSharePopover?.();
+  const node = state.activeId ? findNode(state.activeId) : null;
+  const shareButton = document.getElementById('shareButton');
+  if (!node || !shareButton) return;
+
+  syncSharedPageUrl(node.id);
+  const shareUrl = window.location.href;
+  const backdrop = document.createElement('div');
+  backdrop.className = 'share-backdrop';
+  backdrop.setAttribute('aria-hidden', 'true');
+  const popover = document.createElement('div');
+  popover.id = 'sharePopover';
+  popover.className = 'share-popover';
+  popover.setAttribute('role', 'dialog');
+  popover.setAttribute('aria-labelledby', 'sharePopoverTitle');
+  popover.innerHTML = `
+    <div class="share-popover-header">
+      <div class="share-popover-heading">
+        <span class="share-popover-icon" aria-hidden="true">↗</span>
+        <div>
+          <h3 id="sharePopoverTitle">${escapeHtml(getText('sharePage'))}</h3>
+          <p>${escapeHtml(getText('shareHint'))}</p>
+        </div>
+      </div>
+      <button type="button" class="icon-btn share-close" aria-label="${escapeAttribute(getText('close'))}">×</button>
+    </div>
+    <label class="share-link-label" for="shareLinkInput">${escapeHtml(getText('shareLink'))}</label>
+    <div class="share-link-row">
+      <input id="shareLinkInput" type="text" readonly value="${escapeAttribute(shareUrl)}">
+      <button type="button" class="btn btn-primary" id="copyShareLink">${escapeHtml(getText('copyLink'))}</button>
+    </div>
+    <button type="button" class="btn btn-ghost share-native-button" id="nativeShareButton">${escapeHtml(getText('nativeShare'))}</button>
+    <p class="share-status" id="shareStatus" aria-live="polite"></p>
+  `;
+  document.body.append(backdrop, popover);
+
+  const linkInput = popover.querySelector('#shareLinkInput');
+  const copyButton = popover.querySelector('#copyShareLink');
+  const nativeShareButton = popover.querySelector('#nativeShareButton');
+  const status = popover.querySelector('#shareStatus');
+  const closeButton = popover.querySelector('.share-close');
+
+  const close = () => {
+    backdrop.remove();
+    popover.remove();
+    document.removeEventListener('pointerdown', handleOutsideClick);
+    document.removeEventListener('keydown', handleEscape);
+    if (closeSharePopover === close) closeSharePopover = null;
+  };
+  const handleOutsideClick = (event) => {
+    if (event.target === backdrop || (!popover.contains(event.target) && event.target !== shareButton)) close();
+  };
+  const handleEscape = (event) => {
+    if (event.key === 'Escape') close();
+  };
+  closeSharePopover = close;
+  closeButton.addEventListener('click', close);
+  linkInput.addEventListener('focus', () => linkInput.select());
+  copyButton.addEventListener('click', async () => {
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(shareUrl);
+      } else {
+        linkInput.focus();
+        linkInput.select();
+        if (!document.execCommand('copy')) throw new Error('Copy not supported');
+      }
+      status.textContent = getText('copiedLink');
+      copyButton.textContent = getText('copiedLink');
+      window.setTimeout(() => {
+        if (document.body.contains(copyButton)) copyButton.textContent = getText('copyLink');
+      }, 1800);
+    } catch {
+      linkInput.focus();
+      linkInput.select();
+      status.textContent = getText('shareLink');
+    }
+  });
+  nativeShareButton.hidden = typeof navigator.share !== 'function';
+  nativeShareButton.addEventListener('click', async () => {
+    try {
+      await navigator.share({ title: node.title, text: getText('sharePage'), url: shareUrl });
+      status.textContent = getText('copiedLink');
+    } catch (error) {
+      if (error?.name !== 'AbortError') status.textContent = getText('shareLink');
+    }
+  });
+  document.addEventListener('pointerdown', handleOutsideClick);
+  document.addEventListener('keydown', handleEscape);
+  linkInput.focus();
+  linkInput.select();
+}
+
+function initShare() {
+  const btn = document.getElementById('shareButton');
+  if (!btn) return;
+  btn.addEventListener('click', () => {
+    if (closeSharePopover) closeSharePopover();
+    else openSharePopover();
+  });
+}
+
 /* ---------- Edit mode toggle ---------- */
 function initEditMode() {
   const btn = document.getElementById('editModeToggle');
@@ -1786,67 +2500,7 @@ function initEditMode() {
 }
 
 function setEditMode(on) {
-  const currentlyOn = document.body.classList.contains('edit-mode');
-  if (currentlyOn && !on) {
-    const activeNode = state.activeId ? findNode(state.activeId) : null;
-    const activeEditor = document.getElementById('editorTextarea');
-    const hasChanges = activeNode && activeEditor && hasUnsavedChanges(activeEditor.value, activeNode.content || '');
-    if (hasChanges) {
-      const confirmBackdrop = document.createElement('div');
-      confirmBackdrop.className = 'modal-backdrop';
-      confirmBackdrop.innerHTML = `
-        <div class="modal" role="dialog" aria-modal="true">
-          <h3>${getText('confirmAction')}</h3>
-          <p style="color:var(--text-muted); font-size:14px; margin-top:-6px;">Perubahan belum disimpan. Simpan dahulu?</p>
-          <div class="modal-actions">
-            <button class="btn btn-ghost" id="editToggleCancel">${getText('cancel')}</button>
-            <button class="btn btn-danger" id="editToggleDiscard">Discard</button>
-            <button class="btn btn-primary" id="editToggleSave">${getText('save')}</button>
-          </div>
-        </div>
-      `;
-      document.body.appendChild(confirmBackdrop);
-      const close = () => confirmBackdrop.remove();
-      confirmBackdrop.querySelector('#editToggleCancel').addEventListener('click', close);
-      confirmBackdrop.querySelector('#editToggleDiscard').addEventListener('click', () => {
-        close();
-        document.body.classList.toggle('edit-mode', false);
-        const editBtn = document.getElementById('editModeToggle');
-        if (editBtn) editBtn.classList.toggle('active', false);
-        const label = editBtn?.querySelector('span');
-        if (label) label.textContent = getText('editMode');
-        localStorage.setItem(EDIT_KEY, 'false');
-        syncSettingsPanel();
-        const node = state.activeId ? findNode(state.activeId) : null;
-        if (node) applyEditModeToTitle(node);
-        ensureEditControlsHiddenWhenDisabled();
-        renderContent();
-      });
-      confirmBackdrop.querySelector('#editToggleSave').addEventListener('click', () => {
-        if (activeNode && activeEditor) {
-          activeNode.content = activeEditor.value;
-          saveState();
-        }
-        close();
-        document.body.classList.toggle('edit-mode', false);
-        const editBtn = document.getElementById('editModeToggle');
-        if (editBtn) editBtn.classList.toggle('active', false);
-        const label = editBtn?.querySelector('span');
-        if (label) label.textContent = getText('editMode');
-        localStorage.setItem(EDIT_KEY, 'false');
-        syncSettingsPanel();
-        const node = state.activeId ? findNode(state.activeId) : null;
-        if (node) applyEditModeToTitle(node);
-        ensureEditControlsHiddenWhenDisabled();
-        renderContent();
-      });
-      confirmBackdrop.addEventListener('click', (event) => {
-        if (event.target === confirmBackdrop) close();
-      });
-      return;
-    }
-  }
-
+  const wasInEditor = !!document.querySelector('.editor-wrap');
   document.body.classList.toggle('edit-mode', on);
   const editBtn = document.getElementById('editModeToggle');
   if (editBtn) editBtn.classList.toggle('active', on);
@@ -1855,8 +2509,13 @@ function setEditMode(on) {
   localStorage.setItem(EDIT_KEY, on ? 'true' : 'false');
   syncSettingsPanel();
   const node = state.activeId ? findNode(state.activeId) : null;
+  if (!on) {
+    document.querySelector('#uploadPasswordCancel')?.click();
+    document.querySelectorAll('.modal-backdrop').forEach((modal) => modal.remove());
+    if (wasInEditor || node) renderContent();
+    return;
+  }
   if (node) applyEditModeToTitle(node);
-  ensureEditControlsHiddenWhenDisabled();
 }
 
 /* ---------- Theme toggle ---------- */
@@ -1898,14 +2557,12 @@ function initSidebarToggle() {
   applySidebarState(collapsed);
   syncOverlay();
 
-  const handleToggle = (event) => {
-    if (event) event.stopPropagation();
+  toggle.addEventListener('click', (event) => {
+    event.stopPropagation();
     const next = !document.body.classList.contains('sidebar-collapsed');
     applySidebarState(next);
     syncOverlay();
-  };
-
-  toggle.addEventListener('click', handleToggle);
+  });
 
   overlay.addEventListener('click', () => {
     applySidebarState(true);
@@ -1948,10 +2605,6 @@ function applySidebarState(collapsed) {
   sidebarEl.setAttribute('aria-expanded', String(!collapsed));
   localStorage.setItem(SIDEBAR_KEY, String(collapsed));
 
-  if (!collapsed && !isMobile) {
-    setSidebarWidth(getSidebarWidth());
-  }
-
   if (isMobile) {
     sidebarEl.classList.toggle('mobile-open', !collapsed);
   } else {
@@ -1964,7 +2617,7 @@ function initAddRoot() {
   document.getElementById('addRootPage').addEventListener('click', () => {
     promptModal('Tambah Menu', 'Nama menu', '', (title) => {
       if (!title) return;
-      const newNode = { id: uid(), title, content: `# ${title}\n\nTulis kandungan di sini…`, children: [] };
+      const newNode = { id: uid(), title, content: `# ${title}\n\nTulis kandungan di sini…`, children: [], updatedAt: Date.now() };
       state.pages.push(newNode);
       state.activeId = newNode.id;
       saveState();
@@ -2008,8 +2661,14 @@ function initDataTransfer() {
       try {
         const imported = JSON.parse(reader.result);
         if (!Array.isArray(imported)) throw new Error('Format tidak sah');
-        state.pages = imported;
-        state.activeId = flattenSearch()[0]?.id || null;
+        const normalized = normalizeDocumentState({
+          pages: imported,
+          activeId: imported[0]?.id,
+          bookTitle: state.bookTitle
+        });
+        state.pages = normalized.pages;
+        state.activeId = normalized.activeId;
+        ensurePageTimestamps(state.pages);
         saveState();
         renderTree();
         renderContent();
@@ -2025,12 +2684,23 @@ function initDataTransfer() {
 /* ---------- Search ---------- */
 function initSearch() {
   searchInput.addEventListener('input', () => {
-    const q = searchInput.value.trim().toLowerCase();
+    const query = searchInput.value.trim();
+    const q = query.toLowerCase();
     if (!q) { renderTree(); return; }
     const all = flattenSearch();
     const matchIds = new Set(all.filter(n => n.title.toLowerCase().includes(q)).map(n => n.id));
     // Expand ancestors of matches and filter render
     menuTreeEl.innerHTML = '';
+    if (!matchIds.size) {
+      const emptyState = document.createElement('div');
+      emptyState.className = 'search-empty-state';
+      emptyState.innerHTML = `
+        <strong>${escapeHtml(getText('searchNotFound').replace('{query}', query))}</strong>
+        <span>${escapeHtml(getText('searchSuggestion'))}</span>
+      `;
+      menuTreeEl.appendChild(emptyState);
+      return;
+    }
     state.pages.forEach(node => {
       const el = renderFilteredNode(node, matchIds, q);
       if (el) menuTreeEl.appendChild(el);
@@ -2050,15 +2720,37 @@ function renderFilteredNode(node, matchIds, q) {
 }
 
 /* ---------- Init ---------- */
+function arrangeContentLayout() {
+  const layout = document.querySelector('.layout');
+  const topbar = document.querySelector('.topbar');
+  const content = document.getElementById('content');
+  if (!layout || !topbar || !content || layout.querySelector('.main-shell')) return;
+
+  const mainShell = document.createElement('div');
+  mainShell.className = 'main-shell';
+  layout.appendChild(mainShell);
+  mainShell.append(topbar, content);
+
+  const brand = topbar.querySelector('.brand');
+  const topbarLeft = topbar.querySelector('.topbar-left');
+  const sidebarHeader = document.querySelector('.sidebar-header');
+  const sidebarSearch = sidebarHeader?.querySelector('.sidebar-search');
+  if (brand && topbarLeft && sidebarHeader && sidebarSearch) {
+    sidebarHeader.insertBefore(brand, sidebarSearch);
+    topbarLeft.classList.add('brand-moved');
+  }
+}
+
 async function init() {
+  arrangeContentLayout();
   await loadState();
   updateBrandName();
   applyLanguage(getLanguage());
   initTheme();
   initEditMode();
   initSettings();
+  initShare();
   initSidebarToggle();
-  initSidebarResize();
   initAddRoot();
   initDataTransfer();
   initSearch();
